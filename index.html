@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UC · CX · CPaaS Market Model — SoWhatNowWhat</title>
+<style>
+  :root {
+    --c-bg: #0d0a1f; --c-panel: #16123a; --c-border: #2d2760; --c-rule: #241f4f;
+    --c-text: #f5f2f0; --c-text2: #d8d3e8; --c-muted: #9a93bf; --c-dim: #6f68a0;
+    --c-trust: #8c2ead; --c-trust-lift: #b96bd0; --c-trust-soft: #c9a3e0;
+    --c-insight: #3b408c; --c-insight-soft: #6a70b8; --c-insight-lift: #7d84c8;
+    --c-edge: #40e0d1; --c-grey: #4a4670; --c-grey-dark: #302c55;
+    --c-down: #d9557f; --c-axis: #4a4680;
+    --c-p3: #6f4d9e; --c-p4: #544a86; --c-p5: #3b3766;
+    --c-edge-tint: rgba(64, 224, 209, 0.3); --c-down-tint: rgba(217, 85, 127, 0.35);
+    --c-ink-fixed: #0d0a1f;
+  }
+  :root[data-theme="light"] {
+    --c-bg: #f5f2f0; --c-panel: #fbf9fa; --c-border: #e2dce8; --c-rule: #ece7f0;
+    --c-text: #0d0a1f; --c-text2: #2a2545; --c-muted: #5d5780; --c-dim: #857fa8;
+    --c-trust: #8c2ead; --c-trust-lift: #6f2489; --c-trust-soft: #a95cc0;
+    --c-insight: #3b408c; --c-insight-soft: #5a61ab; --c-insight-lift: #4a51a8;
+    --c-edge: #0f9c8f; --c-grey: #a9a3c0; --c-grey-dark: #7d769c;
+    --c-down: #c33059; --c-axis: #cfc9dd;
+    --c-edge-tint: rgba(15, 156, 143, 0.22); --c-down-tint: rgba(195, 48, 89, 0.24);
+  }
+  html, body { margin: 0; padding: 0; background: var(--c-bg); font-family: -apple-system, 'Inter', system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  a { color: var(--c-trust-lift); text-decoration: none; }
+  input[type=range] { accent-color: var(--c-trust); }
+  button { font-family: inherit; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  @media (max-width: 1040px) {
+    [data-shell] { grid-template-columns: minmax(0, 1fr) !important; }
+    [data-rail] { position: static !important; order: -1; }
+  }
+  @media (max-width: 680px) {
+    [data-page] { padding: 18px 14px 40px !important; }
+    [data-page] h1 { font-size: 24px !important; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+  "use strict";
+  const C = { purple: 'var(--c-trust)', indigo: 'var(--c-insight)', teal: 'var(--c-edge)', lilac: 'var(--c-trust-soft)', amber: 'var(--c-insight-soft)', grey: 'var(--c-grey)', greyDark: 'var(--c-grey-dark)' };
+  const SCEN = {
+    Conservative: { ucG: 0.02, agG: 0.01, cpG: 0.12, ucEnd: 0.45, ccEnd: 0.55, defl: 0.25, devG: 0.09, color: 'var(--c-grey-dark)' },
+    Base:         { ucG: 0.03, agG: 0.02, cpG: 0.18, ucEnd: 0.52, ccEnd: 0.62, defl: 0.35, devG: 0.13, color: 'var(--c-trust)' },
+    Bull:         { ucG: 0.04, agG: 0.03, cpG: 0.24, ucEnd: 0.60, ccEnd: 0.70, defl: 0.50, devG: 0.18, color: 'var(--c-edge)' }
+  };
+  // Calibrated baselines — last-known-good anchors. Live fetch overrides what it can find;
+  // anything the fetch can't parse falls back to these values, so the dashboard always works.
+  const BASE = {
+    SEATS0: 211.87, AGENTS0: 16.0039198, CPAAS0: 16.15958855, DEV0: 11,
+    UC_SHARE0: 0.4700, CC_SHARE0: 0.34, DEFL0: 0.12, SAM_WEIGHT: 0.4125625087
+  };
+  const REGIONS_BASE = [
+    { name: 'East and Southeast Asia', cloud: 37.01345706, op: 14.27425975, pace: 1.15, persist: 1.1, grabs: 22.4702091 },
+    { name: 'South Asia', cloud: 8.962879857, op: 3.517507073, pace: 1.25, persist: 0.9, grabs: 4.841936006 },
+    { name: 'North America', cloud: 6.4215387, op: 2.321283703, pace: 1.1, persist: 1.3, grabs: 4.185514791 },
+    { name: 'Europe', cloud: 7.606630714, op: 2.706898155, pace: 0.8, persist: 0.6, grabs: 4.72300379 },
+    { name: 'Africa', cloud: 4.640479158, op: 1.743386522, pace: 1.2, persist: 0.8, grabs: 2.51324861 },
+    { name: 'South America', cloud: 4.323693686, op: 1.625193861, pace: 1.05, persist: 1.0, grabs: 2.627566559 },
+    { name: 'Middle East', cloud: 2.272107309, op: 0.8289699201, pace: 1.0, persist: 0.9, grabs: 1.373561567 },
+    { name: 'Central Asia', cloud: 1.478230994, op: 0.5411529959, pace: 0.95, persist: 0.9, grabs: 0.8192929956 },
+    { name: 'Australia and Oceania', cloud: 0.6349383631, op: 0.2248735766, pace: 1.05, persist: 1.1, grabs: 0.3867804239 },
+    { name: 'Central America and Caribbean', cloud: 0.6112811186, op: 0.2230791386, pace: 1.0, persist: 1.0, grabs: 0.3532668434 }
+  ];
+  const ROOM_SIZES_BASE = [
+    { name: 'Focus / Personal (1–2)', share: 0.10, enabled: 0.08, addr: 0.45, price: 1200, ctrl: 0.2, ctrlAsp: 500 },
+    { name: 'Huddle / Small (2–6)', share: 0.48, enabled: 0.05, addr: 0.50, price: 2500, ctrl: 0.55, ctrlAsp: 800 },
+    { name: 'Medium (6–16)', share: 0.30, enabled: 0.12, addr: 0.60, price: 6000, ctrl: 0.9, ctrlAsp: 950 },
+    { name: 'Large / Boardroom (12–30+)', share: 0.12, enabled: 0.25, addr: 0.70, price: 15000, ctrl: 0.95, ctrlAsp: 1100 }
+  ];
+  const ECOSYSTEMS_BASE = [
+    { name: 'Microsoft Teams Rooms — Android', share: 0.33, price: 3500, color: C.indigo },
+    { name: 'Microsoft Teams Rooms — Windows', share: 0.22, price: 6000, color: C.purple },
+    { name: 'Zoom Rooms', share: 0.20, price: 4000, color: C.teal },
+    { name: 'BYOD / pass-through', share: 0.17, price: 1500, color: C.grey },
+    { name: 'Google Meet hardware', share: 0.08, price: 3500, color: C.amber }
+  ];
+  const SOM_DEF_BASE = [
+    { key: 'ucaas', name: 'UCaaS', held: 0.66, contest: 0.15 },
+    { key: 'ucop', name: 'UC on-premises', held: 0.72, contest: 0.30 },
+    { key: 'ccaas', name: 'CCaaS', held: 0.71, contest: 0.15 },
+    { key: 'ccop', name: 'CC on-premises', held: 0.69, contest: 0.30 },
+    { key: 'cpaas', name: 'CPaaS', held: 0.68, contest: 0.15 }
+  ];
+  const LANDSCAPE_BASE = [
+    { product: 'UCaaS', players: [['Microsoft', 0.25], ['Cisco', 0.17], ['Zoom', 0.11], ['RingCentral', 0.09], ['8x8', 0.04], ['Other', 0.34]] },
+    { product: 'UC on-premises', players: [['Cisco', 0.28], ['Avaya', 0.18], ['Mitel', 0.12], ['NEC', 0.08], ['ALE', 0.06], ['Other', 0.28]] },
+    { product: 'CCaaS', players: [['NiCE', 0.22], ['Genesys', 0.20], ['Five9', 0.13], ['Amazon Connect', 0.10], ['Talkdesk', 0.06], ['Other', 0.29]] },
+    { product: 'CC on-premises', players: [['Avaya', 0.34], ['Genesys', 0.12], ['Cisco', 0.11], ['Alvaria', 0.07], ['Enghouse', 0.05], ['Other', 0.31]] },
+    { product: 'CPaaS', players: [['Twilio', 0.28], ['Sinch', 0.12], ['Vonage', 0.12], ['Infobip', 0.10], ['Bandwidth', 0.06], ['Other', 0.32]] }
+  ];
+  const DEPLOY = {
+    cloud:  { label: 'Cloud', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 0, ccop: 0 }, note: 'Cloud lines only. On-premises support revenue is out of scope.' },
+    hybrid: { label: 'Hybrid', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 1, ccop: 1 }, note: 'Cloud and on-premises both in scope, including migration of your own installed base.' },
+    onprem: { label: 'On-prem', w: { ucaas: 0, ccaas: 0, cpaas: 0, ucop: 1, ccop: 1 }, note: 'On-premises support base only — a declining pool at support ARPU.' }
+  };
+  const GRID_DECL = [0.20, 0.30, 0.40, 0.50, 0.60];
+  const GRID_GROW = [0, 0.20, 0.40, 0.60, 0.80];
+  const PLAYER_COLORS = [C.purple, C.indigo, 'var(--c-p3)', 'var(--c-p4)', 'var(--c-p5)'];
+  const DEFAULTS_BASE = { ucArpu: 240, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, winRate: 0.10,
+    tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
+    aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200 };
+  const AI = { priceIn: 1.00, priceOut: 4.00, cacheHit: 0.60, outRatio: 0.125, containment: 0.75,
+    voicePerMin: 0.015, voiceDecl: 0.15, humanCost: 5.00, agentArpu: 2500 };
+  // Per-tier SAM weights, matching Control Panel's 'SAM weight - Tier N' rows.
+  // Used to compute a real, tier-distribution-weighted SAM_WEIGHT from live
+  // Readiness Tier data, replacing the flat calibrated constant when available.
+  const SAM_WEIGHT_BY_TIER = { 1: 0.60, 2: 0.45, 3: 0.30, 4: 0.18, 5: 0.10 };
+
+  // ============================================================
+  // LIVE DATA — see live-data notes: fetches the real sheet, falls
+  // back silently to BASE/*_BASE constants on any failure.
+  // ============================================================
+  const SHEET_ID = '1M_pN-BiVDylDF5cxWziwa1kP3jrR1lqlWyW7pRE0uMk';
+  const GVIZ = (tab) => 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tab);
+
+  function parseCSV(text) {
+    const rows = []; let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i], n = text[i + 1];
+      if (inQuotes) {
+        if (c === '"' && n === '"') { field += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else field += c;
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\n' || c === '\r') {
+          if (c === '\r' && n === '\n') i++;
+          row.push(field); rows.push(row); row = []; field = '';
+        } else field += c;
+      }
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    return rows.filter(r => r.some(c => c !== ''));
+  }
+  function numVal(s) {
+    if (s === undefined || s === null) return NaN;
+    const cleaned = String(s).replace(/[$,%\sx]/g, '').replace(/^\((.*)\)$/, '-$1');
+    const v = parseFloat(cleaned);
+    return isNaN(v) ? NaN : v;
+  }
+  function findTable(rows, headerNeedles) {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i].map(c => c.trim());
+      let searchFrom = 0, ok = true; const colIdx = {};
+      for (const needle of headerNeedles) {
+        let found = -1;
+        for (let j = searchFrom; j < row.length; j++) { if (row[j].toLowerCase().includes(needle.toLowerCase())) { found = j; break; } }
+        if (found === -1) { ok = false; break; }
+        colIdx[needle] = found; searchFrom = found + 1;
+      }
+      if (ok) {
+        const dataRows = [];
+        for (let k = i + 1; k < rows.length; k++) { const r = rows[k]; if (!r[0] || r[0].trim() === '') break; dataRows.push(r); }
+        return { colIdx, dataRows };
+      }
+    }
+    return null;
+  }
+  async function fetchTab(tab, timeoutMs) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs || 8000);
+    try {
+      const res = await fetch(GVIZ(tab), { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      clearTimeout(t);
+      return parseCSV(text);
+    } catch (e) { clearTimeout(t); throw e; }
+  }
+  async function loadLiveModel() {
+    const out = {};
+    try {
+      const rf = await fetchTab('Regional Forecast');
+      const rfTable = findTable(rf, ['Region', 'Cloud 2025', 'On-prem 2025', 'Cloud pace', 'On-prem persist']);
+      if (rfTable) {
+        out.regionsForecast = rfTable.dataRows.filter(r => r[0] && !r[0].toUpperCase().includes('GLOBAL')).map(r => ({
+          name: r[rfTable.colIdx['Region']].trim(), cloud: numVal(r[rfTable.colIdx['Cloud 2025']]), op: numVal(r[rfTable.colIdx['On-prem 2025']]),
+          pace: numVal(r[rfTable.colIdx['Cloud pace']]), persist: numVal(r[rfTable.colIdx['On-prem persist']])
+        })).filter(r => r.name && !isNaN(r.cloud) && !isNaN(r.op));
+      }
+    } catch (e) { console.warn('Live fetch failed: Regional Forecast', e); }
+    try {
+      const mr = await fetchTab('Meeting Rooms');
+      const sizeTable = findTable(mr, ['Room size', 'Share of rooms', 'Video-enabled', 'Addressable', 'Up for grabs', 'Device $/room']);
+      if (sizeTable) {
+        out.roomSizes = sizeTable.dataRows.filter(r => r[0] && r[0].trim() !== 'TOTAL').map(r => ({
+          name: r[sizeTable.colIdx['Room size']].trim(), share: numVal(r[sizeTable.colIdx['Share of rooms']]) / 100,
+          enabled: numVal(r[sizeTable.colIdx['Video-enabled']]) / 100, addr: numVal(r[sizeTable.colIdx['Addressable']]) / 100,
+          price: numVal(r[sizeTable.colIdx['Device $/room']])
+        })).filter(r => r.name && !isNaN(r.share));
+      }
+      const ctrlTable = findTable(mr, ['Room size', 'Rooms up for grabs', 'Attach rate', 'ASP']);
+      if (ctrlTable && out.roomSizes) {
+        const byName = {};
+        ctrlTable.dataRows.filter(r => r[0] && r[0].trim() !== 'TOTAL').forEach(r => {
+          byName[r[ctrlTable.colIdx['Room size']].trim()] = { ctrl: numVal(r[ctrlTable.colIdx['Attach rate']]) / 100, ctrlAsp: numVal(r[ctrlTable.colIdx['ASP']]) };
+        });
+        out.roomSizes = out.roomSizes.map(s => ({ ...s, ...(byName[s.name] || {}) }));
+      }
+      const ecoTable = findTable(mr, ['Ecosystem', 'Room share', 'Device $/room', 'Device TAM']);
+      if (ecoTable) {
+        out.ecosystems = ecoTable.dataRows.filter(r => r[0] && r[0].trim() !== 'TOTAL').map((r, i) => ({
+          name: r[ecoTable.colIdx['Ecosystem']].trim(), share: numVal(r[ecoTable.colIdx['Room share']]) / 100,
+          price: numVal(r[ecoTable.colIdx['Device $/room']]), color: [C.indigo, C.purple, C.teal, C.grey, C.amber][i] || C.grey
+        })).filter(r => r.name && !isNaN(r.share));
+      }
+      const regionRoomsTable = findTable(mr, ['Region', 'UC seats', 'Density index', 'Weighted rooms', 'Up for grabs']);
+      if (regionRoomsTable && out.regionsForecast) {
+        const grabsByName = {};
+        regionRoomsTable.dataRows.filter(r => r[0] && r[0].trim() !== 'TOTAL').forEach(r => { grabsByName[r[regionRoomsTable.colIdx['Region']].trim()] = numVal(r[regionRoomsTable.colIdx['Up for grabs']]); });
+        out.regionsForecast = out.regionsForecast.map(r => ({ ...r, grabs: grabsByName[r.name] })).filter(r => !isNaN(r.grabs));
+      }
+    } catch (e) { console.warn('Live fetch failed: Meeting Rooms', e); }
+    try {
+      const da = await fetchTab('Demand Assumptions');
+      const flat = da.map(r => r.map(c => c.trim()));
+      const findLabelValue = (label) => {
+        for (const r of flat) { if (r[0] && r[0].toLowerCase().includes(label.toLowerCase())) { for (let j = 1; j < r.length; j++) { if (r[j]) return numVal(r[j]); } } }
+        return NaN;
+      };
+      const demand = {
+        ucArpu: findLabelValue('UCaaS ARPU / seat'), opArpu: findLabelValue('UC on-prem ARPU / seat'),
+        ccArpu: findLabelValue('CCaaS ARPU / agent'), ccOpArpu: findLabelValue('CC on-prem ARPU / agent'),
+        cpaasMult: findLabelValue('CPaaS TAM multiple'),
+        ucShare0: findLabelValue('UCaaS share of UC seats') / 100, ccShare0: findLabelValue('CCaaS share of agents') / 100
+      };
+      out.demandDefaults = Object.fromEntries(Object.entries(demand).filter(([,v]) => !isNaN(v)));
+    } catch (e) { console.warn('Live fetch failed: Demand Assumptions', e); }
+    try {
+      const sc = await fetchTab('SOM & Competitive');
+      const somTable = findTable(sc, ['Product', 'Current mkt', '2030 mkt', 'Top-5 held', 'Other pool', 'Incumbent contestability']);
+      if (somTable) {
+        const keyMap = { 'UCaaS': 'ucaas', 'UC on-premises': 'ucop', 'CCaaS': 'ccaas', 'CC on-premises': 'ccop', 'CPaaS': 'cpaas' };
+        out.somDef = somTable.dataRows.filter(r => r[0] && r[0].trim() !== 'TOTAL').map(r => ({
+          key: keyMap[r[0].trim()] || r[0].trim().toLowerCase(), name: r[0].trim(),
+          held: numVal(r[somTable.colIdx['Top-5 held']]) / 100, contest: numVal(r[somTable.colIdx['Incumbent contestability']]) / 100
+        })).filter(r => !isNaN(r.held) && !isNaN(r.contest));
+      }
+      const landTable = findTable(sc, ['Product', '#1 Leader', 'Share', '#2', 'Share', '#3']);
+      if (landTable) {
+        // Fixed shape: Product, then 5 (name, share) pairs, then a bare Other share, then Total.
+        out.landscape = landTable.dataRows.filter(r => r[0]).map(r => {
+          const players = [];
+          for (let k = 0; k < 5; k++) {
+            const idx = 1 + k * 2;
+            const name = r[idx] && r[idx].trim(), share = numVal(r[idx + 1]);
+            if (name && !isNaN(share)) players.push([name, share / 100]);
+          }
+          const otherShare = numVal(r[11]);
+          if (!isNaN(otherShare)) players.push(['Other', otherShare / 100]);
+          return { product: r[0].trim(), players };
+        }).filter(p => p.players.length > 0);
+      }
+    } catch (e) { console.warn('Live fetch failed: SOM & Competitive', e); }
+    try {
+      const rt = await fetchTab('Readiness Tier');
+      const rtTable = findTable(rt, ['TAM Navigator Country Name', 'Readiness Tier']);
+      if (rtTable) {
+        const tiers = rtTable.dataRows.map(r => numVal(r[rtTable.colIdx['Readiness Tier']])).filter(t => !isNaN(t) && t >= 1 && t <= 5);
+        if (tiers.length > 0) {
+          out.readinessTiers = tiers;
+        }
+      }
+    } catch (e) { console.warn('Live fetch failed: Readiness Tier', e); }
+    try {
+      const at = await fetchTab('Adoption by Tier');
+      const flat = at.map(r => r.map(c => c.trim()));
+      const findLabelValue = (label) => {
+        for (const r of flat) { if (r[0] && r[0].toLowerCase() === label.toLowerCase()) { for (let j = 1; j < r.length; j++) { if (r[j]) return numVal(r[j]); } } }
+        return NaN;
+      };
+      const seats0 = findLabelValue('SEATS0');
+      const ucShare0Adoption = findLabelValue('UC_SHARE0');
+      if (!isNaN(seats0) && seats0 > 0) out.seats0Adoption = seats0;
+      if (!isNaN(ucShare0Adoption) && ucShare0Adoption > 0 && ucShare0Adoption < 1) out.ucShare0Adoption = ucShare0Adoption;
+    } catch (e) { console.warn('Live fetch failed: Adoption by Tier', e); }
+    return out;
+  }
+
+  // ============================================================
+  // STATE + MODEL MATH (ported 1:1 from the Claude Design source)
+  // ============================================================
+  let LIVE = {}; // populated after loadLiveModel() resolves
+  let liveStatus = 'loading'; // 'loading' | 'live' | 'fallback'
+
+  function REGIONS() { return LIVE.regionsForecast && LIVE.regionsForecast.length === 10 ? LIVE.regionsForecast : REGIONS_BASE; }
+  function ROOM_SIZES() { return LIVE.roomSizes && LIVE.roomSizes.length === 4 ? LIVE.roomSizes.map(s => ({ ctrl: 0.5, ctrlAsp: 800, ...s })) : ROOM_SIZES_BASE; }
+  function ECOSYSTEMS() { return LIVE.ecosystems && LIVE.ecosystems.length >= 4 ? LIVE.ecosystems : ECOSYSTEMS_BASE; }
+  function SOM_DEF() { return LIVE.somDef && LIVE.somDef.length === 5 ? LIVE.somDef : SOM_DEF_BASE; }
+  function LANDSCAPE() { return LIVE.landscape && LIVE.landscape.length >= 5 ? LIVE.landscape : LANDSCAPE_BASE; }
+  function DEFAULTS() { return { ...DEFAULTS_BASE, ...(LIVE.demandDefaults || {}) }; }
+  function SEATS0() { return LIVE.seats0Adoption || BASE.SEATS0; }
+  function AGENTS0() { return BASE.AGENTS0; }
+  function CPAAS0() { return BASE.CPAAS0; }
+  function DEV0() { return BASE.DEV0; }
+  function UC_SHARE0() { return LIVE.ucShare0Adoption || (LIVE.demandDefaults && LIVE.demandDefaults.ucShare0) || BASE.UC_SHARE0; }
+  function CC_SHARE0() { return (LIVE.demandDefaults && LIVE.demandDefaults.ccShare0) || BASE.CC_SHARE0; }
+  function DEFL0() { return BASE.DEFL0; }
+  function SAM_WEIGHT() {
+    const tiers = LIVE.readinessTiers;
+    if (tiers && tiers.length > 0) {
+      const sum = tiers.reduce((a, t) => a + (SAM_WEIGHT_BY_TIER[t] || 0), 0);
+      return sum / tiers.length;
+    }
+    return BASE.SAM_WEIGHT;
+  }
+
+  const state = { tab: 'overview', scenario: 'Base', theme: 'dark', ...DEFAULTS_BASE };
+
+  function setState(patch) { Object.assign(state, typeof patch === 'function' ? patch(state) : patch); render(); }
+
+  function cagr(a, b) { return Math.pow(b / a, 1 / 5) - 1; }
+  function fb(v, d) { return '$' + v.toFixed(d === undefined ? 1 : d) + 'B'; }
+  function pct(v, d) { return (v * 100).toFixed(d === undefined ? 1 : d) + '%'; }
+  function spct(v) { return (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%'; }
+  function growthColor(v) { return v < 0 ? 'var(--c-down)' : C.teal; }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+  function aiGross(agentsM, defl) {
+    const st = state;
+    const deflAgents = agentsM * defl;
+    const resolutions = deflAgents * st.contacts / 1000;
+    const aiAgents = resolutions * 1000 / st.aiCapacity;
+    let gross;
+    if (st.aiMode === 'resolution') gross = resolutions * st.pricePerRes;
+    else if (st.aiMode === 'aiagent') gross = aiAgents * st.aiAgentPrice * 12 / 1000;
+    else gross = deflAgents * AI.agentArpu / 1000;
+    return { deflAgents, resolutions, aiAgents, gross };
+  }
+  function unit(i, opts) {
+    const st = state;
+    const decl = opts && opts.decl !== undefined ? opts.decl : st.declRate;
+    const grow = opts && opts.grow !== undefined ? opts.grow : st.intensity;
+    const tokIn = st.tokRes * Math.pow(1 + grow, i);
+    const tokOut = tokIn * AI.outRatio;
+    const effIn = AI.priceIn * (1 - AI.cacheHit * 0.9) * Math.pow(1 - decl, i);
+    const effOut = AI.priceOut * Math.pow(1 - decl, i);
+    const tokenCost = (tokIn / 1e6 * effIn + tokOut / 1e6 * effOut) / AI.containment;
+    const voiceCost = st.voiceShare * st.aht * AI.voicePerMin * Math.pow(1 - AI.voiceDecl, i);
+    return { tokIn, tokOut, tokenCost, voiceCost, cost: tokenCost + voiceCost };
+  }
+  function run(scenarioName) {
+    const s = SCEN[scenarioName], st = state;
+    const seats0 = SEATS0(), agents0 = AGENTS0() * st.agentScale;
+    const years = [2025, 2026, 2027, 2028, 2029, 2030];
+    const rows = years.map((year, i) => {
+      const t = i / 5;
+      const ucShare = UC_SHARE0() + (s.ucEnd - UC_SHARE0()) * t;
+      const ccShare = CC_SHARE0() + (s.ccEnd - CC_SHARE0()) * t;
+      const seats = seats0 * Math.pow(1 + s.ucG, i);
+      const agents = agents0 * Math.pow(1 + s.agG, i);
+      const defl = DEFL0() + (s.defl - DEFL0()) * t;
+      const dFactor = 1 - (defl - DEFL0());
+      const outcome = 1 - 0.10 * t;
+      const uplift = 1 + 0.25 * t;
+      const capture = 0.75 - 0.20 * t;
+      const ucaas = seats * ucShare * st.ucArpu / 1000;
+      const ucop = seats * (1 - ucShare) * st.opArpu / 1000;
+      const ccaas = agents * ccShare * st.ccArpu * dFactor * outcome / 1000;
+      const ccop = agents * (1 - ccShare) * st.ccOpArpu * dFactor / 1000;
+      const cpaas = CPAAS0() * Math.pow(1 + s.cpG, i) * uplift;
+      const aiBase = aiGross(agents, defl).gross;
+      const ai = aiBase * capture, leak = aiBase * (1 - capture);
+      const devices = DEV0() * Math.pow(1 + s.devG, i);
+      return { year, seats, agents, ucShare, ccShare, ucaas, ucop, ccaas, ccop, cpaas, ai, leak, devices,
+        software: ucaas + ucop + ccaas + ccop + cpaas, cloud: ucaas + ccaas + cpaas, onprem: ucop + ccop,
+        total: ucaas + ucop + ccaas + ccop + cpaas + ai + devices };
+    });
+    return { rows, first: rows[0], last: rows[5] };
+  }
+  function aiEcon(rows, opts) {
+    const st = state;
+    return rows.map((r, i) => {
+      const u = unit(i, opts);
+      const defl = DEFL0() + (SCEN[state.scenario].defl - DEFL0()) * (i / 5);
+      const g = aiGross(r.agents, defl);
+      const capture = 0.75 - 0.20 * (i / 5);
+      const revenue = g.gross * capture;
+      const cogs = g.resolutions * u.cost;
+      const realised = g.resolutions > 0 ? g.gross / g.resolutions : 0;
+      return { year: r.year, ...u, resolutions: g.resolutions, aiAgents: g.aiAgents, deflAgents: g.deflAgents, revenue, cogs,
+        grossProfit: revenue - cogs, margin: revenue > 0 ? (revenue - cogs) / revenue : 0, realised,
+        buyerSaving: g.resolutions * (AI.humanCost - realised) };
+    });
+  }
+  function bar(frac, color, height, radius) {
+    return 'width:' + Math.max(0.6, frac * 100) + '%;height:' + (height || '100%') + ';background:' + color + ';border-radius:' + (radius || '3px');
+  }
+
+  // ============================================================
+  // RENDER — one function per tab, string-templated (no framework)
+  // ============================================================
+  function build() {
+    const st = state, tab = st.tab, scen = st.scenario;
+    const act = run(scen), f = act.first, l = act.last;
+    const alt = { Conservative: run('Conservative'), Base: run('Base'), Bull: run('Bull') };
+    const maxScen = Math.max(alt.Conservative.last.total, alt.Base.last.total, alt.Bull.last.total);
+    const dep = DEPLOY[st.deploy] || DEPLOY.hybrid;
+    const w = dep.w;
+    const scoped = (row) => row.ucaas * w.ucaas + row.ucop * w.ucop + row.ccaas * w.ccaas + row.ccop * w.ccop + row.cpaas * w.cpaas;
+    const tam = st.deploy === 'onprem'
+      ? f.seats * st.opArpu / 1000 + f.agents * st.ccOpArpu / 1000
+      : f.seats * st.ucArpu / 1000 + f.agents * st.ccArpu / 1000 + CPAAS0() * st.cpaasMult
+        + (w.ucop ? f.seats * (1 - UC_SHARE0()) * st.opArpu / 1000 + f.agents * (1 - CC_SHARE0()) * st.ccOpArpu / 1000 : 0);
+    const sam = tam * SAM_WEIGHT();
+    const addressableNow = scoped(f), addressable2030 = scoped(l);
+
+    const prodDefs = [
+      { key: 'ucaas', name: 'UCaaS', color: C.purple }, { key: 'cpaas', name: 'CPaaS', color: C.teal },
+      { key: 'ucop', name: 'UC on-premises', color: C.grey }, { key: 'ccaas', name: 'CCaaS', color: C.indigo },
+      { key: 'ccop', name: 'CC on-premises', color: C.greyDark }, { key: 'ai', name: 'Conversational AI / AI-CX', color: C.lilac },
+      { key: 'devices', name: 'Video devices (rooms)', color: C.amber }
+    ];
+    const cagrs = prodDefs.map(p => cagr(f[p.key], l[p.key]));
+    const maxAbsCagr = Math.max(...cagrs.map(Math.abs));
+
+    const REG = REGIONS();
+    const gCloudCagr = cagr(f.cloud, l.cloud), gOpCagr = cagr(f.onprem, l.onprem);
+    const regions = REG.map(r => {
+      const cc = gCloudCagr * r.pace, oc = gOpCagr * r.persist;
+      const c30 = r.cloud * Math.pow(1 + cc, 5), o30 = r.op * Math.pow(1 + oc, 5);
+      return { ...r, t30: c30 + o30, cagr: cagr(r.cloud + r.op, c30 + o30), cloudShare: c30 / (c30 + o30) };
+    }).sort((a, b) => b.t30 - a.t30);
+    const maxRegion = regions[0].t30, maxGrabs = Math.max(...REG.map(r => r.grabs));
+
+    const rooms = { smb: 334.647666 * 0.06, mid: 323.107515 * 0.13, ent: 187.77675 * 0.15 };
+    const roomsTotal = rooms.smb + rooms.mid + rooms.ent;
+    const sizes = ROOM_SIZES().map(s => {
+      const r = roomsTotal * s.share, grabs = r * (1 - s.enabled) * s.addr;
+      return { ...s, roomsM: r, grabsM: grabs, tamB: grabs * s.price / 1000, ctrlB: grabs * s.ctrl * s.ctrlAsp / 1000 };
+    });
+    const grabsTotal = sizes.reduce((a, s) => a + s.grabsM, 0);
+    const deviceTamTotal = sizes.reduce((a, s) => a + s.tamB, 0);
+    const ctrlTotal = sizes.reduce((a, s) => a + s.ctrlB, 0);
+    const maxSizeTam = Math.max(...sizes.map(s => s.tamB));
+
+    const somRows = SOM_DEF().filter(d => w[d.key] > 0).map(d => {
+      const share = st.winRate * ((1 - d.held) + d.contest * d.held);
+      return { ...d, share, now: share * f[d.key] * w[d.key], y2030: share * l[d.key] * w[d.key] };
+    });
+    const somNow = somRows.reduce((a, r) => a + r.now, 0), som30 = somRows.reduce((a, r) => a + r.y2030, 0);
+    const maxSom = Math.max(...somRows.map(r => r.y2030));
+
+    const ai = aiEcon(act.rows), aiFirst = ai[0], aiLast = ai[5];
+    const priceRealised = aiLast.realised;
+    const deflAgents30 = l.agents * SCEN[scen].defl;
+    const aiAgentRev30 = deflAgents30 * AI.agentArpu / 1000;
+    const aiResRev30 = aiLast.resolutions * st.pricePerRes;
+    const aiWorkerRev30 = aiLast.aiAgents * st.aiAgentPrice * 12 / 1000;
+    const maxModeRev = Math.max(aiResRev30, aiAgentRev30, aiWorkerRev30);
+    const gridRows = GRID_DECL.map(d => ({
+      label: '−' + (d * 100).toFixed(0) + '%',
+      cells: GRID_GROW.map(g => {
+        const u = unit(5, { decl: d, grow: g });
+        const m = 1 - u.cost / Math.max(0.0001, priceRealised);
+        const t = Math.max(0, Math.min(1, (m - 0.3) / 0.65));
+        return { label: (m * 100).toFixed(0) + '%', neg: m < 0, t };
+      })
+    }));
+
+    return { st, tab, scen, act, f, l, alt, maxScen, dep, w, tam, sam, addressableNow, addressable2030, prodDefs, cagrs, maxAbsCagr,
+      regions, maxRegion, maxGrabs, roomsTotal, sizes, grabsTotal, deviceTamTotal, ctrlTotal, maxSizeTam,
+      somRows, somNow, som30, maxSom, ai, aiFirst, aiLast, aiAgentRev30, aiResRev30, aiWorkerRev30, maxModeRev, gridRows };
+  }
+
+  function headerHTML(v) {
+    const scenBtn = (key) => {
+      const on = v.scen === key, dark = key === 'Bull';
+      return `<button data-scen="${key}" style="background:${on ? SCEN[key].color : 'transparent'};border:none;color:${on ? (dark ? 'var(--c-ink-fixed)' : '#fff') : 'var(--c-muted)'};font-size:11.5px;font-weight:600;letter-spacing:.06em;padding:8px 14px;border-radius:6px;cursor:pointer">${key}</button>`;
+    };
+    const liveDot = liveStatus === 'live' ? `<span style="color:var(--c-edge)">● Live sheet data</span>` :
+      liveStatus === 'loading' ? `<span style="color:var(--c-dim)">○ Loading live data…</span>` :
+      `<span style="color:var(--c-dim)" title="Couldn't reach or parse the sheet — showing last calibrated baseline">○ Baseline (fallback)</span>`;
+    return `
+    <header style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;border-bottom:1px solid var(--c-border);padding-bottom:20px">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--c-trust-lift)">Global business TAM baseline</div>
+        <h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em">UC · CX · CPaaS market model</h1>
+        <div style="font-size:14px;color:var(--c-muted);max-width:620px">Live scenario model over 224 countries, 560M businesses and ~90M meeting rooms. Every figure below recalculates from the levers on the right.</div>
+        <div style="font-size:11.5px;margin-top:2px">${liveDot}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-end">
+        <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Scenario</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;gap:4px;padding:4px;background:var(--c-panel);border:1px solid var(--c-border);border-radius:8px">
+            ${scenBtn('Conservative')}${scenBtn('Base')}${scenBtn('Bull')}
+          </div>
+          <button id="themeBtn" style="background:transparent;border:1px solid var(--c-border);color:var(--c-muted);font-size:11.5px;font-weight:500;padding:8px 12px;border-radius:8px;cursor:pointer">${state.theme === 'light' ? 'Dark' : 'Light'}</button>
+        </div>
+      </div>
+    </header>
+    <nav style="display:flex;gap:4px;margin:22px 0 24px;flex-wrap:wrap">
+      ${['overview','forecast','regions','rooms','compete','ai'].map(k => {
+        const labels = { overview: 'Overview', forecast: 'Forecast 2025–2030', regions: 'Regions &amp; countries', rooms: 'Meeting rooms', compete: 'Competition &amp; SOM', ai: 'AI unit economics' };
+        const on = v.tab === k;
+        return `<button data-tab="${k}" style="background:${on ? 'var(--c-rule)' : 'transparent'};border:1px solid ${on ? 'var(--c-trust)' : 'var(--c-border)'};color:${on ? 'var(--c-text)' : 'var(--c-muted)'};font-size:13px;font-weight:${on?600:500};padding:9px 16px;border-radius:8px;cursor:pointer">${labels[k]}</button>`;
+      }).join('')}
+    </nav>`;
+  }
+
+  function overviewHTML(v) {
+    const cards = [
+      ['Current market 2025', v.f.software.toFixed ? fb(v.f.software) : '', `${fb(v.addressableNow)} in your ${v.dep.label} scope`, C.purple],
+      ['Total TAM', fb(v.tam, 0), 'All seats, all agents, CPaaS ceiling', C.indigo],
+      ['2030 ecosystem', fb(v.l.total), `${pct(cagr(v.f.total, v.l.total))} CAGR, software + AI + devices`, C.teal],
+      ['Contact-centre agents', v.f.agents.toFixed(1) + 'M', `${v.f.seats.toFixed(0)}M UC seats worldwide`, C.insightSoft || 'var(--c-insight-soft)']
+    ];
+    const funnel = [
+      ['TAM — total addressable', v.dep.label + ' scope: ' + v.dep.note, fb(v.tam, 0), 1, v.st.theme],
+      ['SAM — serviceable', 'Weighted by country digital readiness', fb(v.sam, 0), v.sam / v.tam],
+      ['SOM — obtainable', 'Your win rate against the field', fb(v.somNow), v.somNow / v.tam]
+    ];
+    return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px">
+      ${cards.map(([label, val, note, color]) => `
+        <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${color};border-radius:10px;padding:16px 18px">
+          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">${label}</div>
+          <div class="tnum" style="font-size:30px;font-weight:600;letter-spacing:-.02em">${val}</div>
+          <div style="font-size:12.5px;color:var(--c-muted);margin-top:4px">${note}</div>
+        </div>`).join('')}
+    </div>
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px">
+        <h2 style="margin:0;font-size:17px;font-weight:600">Market funnel, 2025</h2>
+        <div style="font-size:12.5px;color:var(--c-dim)">TAM → serviceable → obtainable</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        ${funnel.map(([label, note, val, frac]) => `
+          <div style="display:grid;grid-template-columns:minmax(116px,190px) minmax(0,1fr) 104px;gap:16px;align-items:center">
+            <div><div style="font-size:14px;font-weight:600">${label}</div><div style="font-size:11.5px;color:var(--c-dim)">${note}</div></div>
+            <div style="height:30px;background:var(--c-bg);border-radius:4px;overflow:hidden"><div style="${bar(frac, C.purple)}"></div></div>
+            <div class="tnum" style="text-align:right;font-size:16px;font-weight:500">${val}</div>
+          </div>`).join('')}
+      </div>
+    </section>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:22px;margin-top:22px">
+      <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:16px">
+          <h2 style="margin:0;font-size:17px;font-weight:600">Market by product</h2>
+          <div style="font-size:12.5px;color:var(--c-dim)">Dimmed rows sit outside your ${v.dep.label} scope</div>
+        </div>
+        <table style="width:100%;min-width:600px;border-collapse:collapse;font-size:13.5px">
+          <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
+            <th style="text-align:left;padding:0 0 8px">Product</th><th style="text-align:right;padding:0 0 8px">2025</th>
+            <th style="text-align:right;padding:0 0 8px">2030</th><th style="text-align:right;padding:0 0 8px 18px">CAGR</th></tr></thead>
+          <tbody>
+          ${v.prodDefs.map((p, i) => {
+            const c = v.cagrs[i], w = Math.max(1.5, Math.abs(c) / v.maxAbsCagr * 100) + '%', neg = c < 0;
+            const opacity = (v.w[p.key] === undefined || v.w[p.key] > 0) ? 1 : 0.38;
+            return `<tr style="border-top:1px solid var(--c-rule);opacity:${opacity}">
+              <td style="padding:9px 0;font-weight:500">${p.name}</td>
+              <td class="tnum" style="padding:9px 0;text-align:right;color:var(--c-muted)">${fb(v.f[p.key])}</td>
+              <td class="tnum" style="padding:9px 0;text-align:right">${fb(v.l[p.key])}</td>
+              <td class="tnum" style="padding:9px 0 9px 18px;text-align:right;color:${growthColor(c)}">${spct(c)}</td></tr>`;
+          }).join('')}
+          <tr style="border-top:1px solid var(--c-border);font-weight:600">
+            <td style="padding:9px 0">Total ecosystem</td><td class="tnum" style="padding:9px 0;text-align:right">${fb(v.f.total)}</td>
+            <td class="tnum" style="padding:9px 0;text-align:right">${fb(v.l.total)}</td>
+            <td class="tnum" style="padding:9px 0 9px 18px;text-align:right;color:${C.teal}">${spct(cagr(v.f.total, v.l.total))}</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
+        <h2 style="margin:0 0 18px;font-size:17px;font-weight:600">2030 total by scenario</h2>
+        <div style="display:flex;flex-direction:column;gap:14px">
+        ${['Conservative','Base','Bull'].map(k => `
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div style="font-size:13.5px;font-weight:500;color:${SCEN[k].color}">${k}</div>
+              <div class="tnum" style="font-size:15px">${fb(v.alt[k].last.total)}</div>
+            </div>
+            <div style="height:10px;background:var(--c-bg);border-radius:3px;overflow:hidden;margin:6px 0"><div style="${bar(v.alt[k].last.total / v.maxScen, SCEN[k].color, '10px')}"></div></div>
+            <div style="font-size:11.5px;color:var(--c-dim)">${pct(cagr(v.alt[k].first.total, v.alt[k].last.total))} CAGR · cloud UC ${pct(SCEN[k].ucEnd,0)} by 2030</div>
+          </div>`).join('')}
+        </div>
+      </section>
+    </div>`;
+  }
+
+  function forecastHTML(v) {
+    const years = v.act.rows.map(r => r.year);
+    const maxTotal = Math.max(...v.alt.Bull.rows.map(x => x.total));
+    return `
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto">
+      <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">Total ecosystem, $B — ${v.scen} scenario</h2>
+      <div style="display:flex;gap:18px;align-items:flex-end;height:280px;padding:20px 0 0">
+        ${v.act.rows.map(r => `
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end">
+            <div class="tnum" style="font-size:13px;font-weight:500">${r.total.toFixed(0)}</div>
+            <div style="width:100%;height:${(r.total / maxTotal * 100)}%;display:flex;flex-direction:column;border-radius:4px;overflow:hidden;min-height:4px">
+              ${v.prodDefs.map(p => `<div style="height:${(r[p.key] / r.total * 100)}%;background:${p.color}" title="${p.name} ${fb(r[p.key])}"></div>`).join('')}
+            </div>
+            <div style="font-size:12px;color:var(--c-muted)">${r.year}</div>
+          </div>`).join('')}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px 20px;border-top:1px solid var(--c-rule);margin-top:18px;padding-top:16px">
+        ${v.prodDefs.map(p => `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--c-muted)"><div style="width:10px;height:10px;border-radius:2px;background:${p.color}"></div>${p.name}</div>`).join('')}
+      </div>
+    </section>
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
+      <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">Projection detail</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:660px">
+        <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
+          <th style="text-align:left;padding:0 0 8px">Metric</th>${years.map(y => `<th style="text-align:right;padding:0 0 8px 14px">${y}</th>`).join('')}
+          <th style="text-align:right;padding:0 0 8px 20px">CAGR</th></tr></thead>
+        <tbody>
+        ${[
+          ['UC seats (M)', v.act.rows.map(r => r.seats.toFixed(0)), spct(cagr(v.f.seats, v.l.seats)), C.teal],
+          ['CC agents (M)', v.act.rows.map(r => r.agents.toFixed(2)), spct(cagr(v.f.agents, v.l.agents)), C.teal],
+          ['UC cloud share', v.act.rows.map(r => pct(r.ucShare, 0)), '—', 'var(--c-dim)'],
+          ['CC cloud share', v.act.rows.map(r => pct(r.ccShare, 0)), '—', 'var(--c-dim)']
+        ].map(([name, cells, c, color]) => `<tr style="border-top:1px solid var(--c-rule)">
+          <td style="padding:8px 0;font-weight:500">${name}</td>${cells.map(x => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-text2)">${x}</td>`).join('')}
+          <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:${color}">${c}</td></tr>`).join('')}
+        ${v.prodDefs.map((p, i) => `<tr style="border-top:1px solid var(--c-rule)">
+          <td style="padding:8px 0;font-weight:500">${p.name} ($B)</td>${v.act.rows.map(r => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-text2)">${r[p.key].toFixed(1)}</td>`).join('')}
+          <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:${growthColor(v.cagrs[i])}">${spct(v.cagrs[i])}</td></tr>`).join('')}
+        <tr style="border-top:1px solid var(--c-border);font-weight:600">
+          <td style="padding:8px 0">TOTAL ECOSYSTEM ($B)</td>${v.act.rows.map(r => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right">${r.total.toFixed(1)}</td>`).join('')}
+          <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:${C.teal}">${spct(cagr(v.f.total, v.l.total))}</td></tr>
+        <tr style="border-top:1px solid var(--c-rule);color:var(--c-muted)">
+          <td style="padding:8px 0">CRM leakage (memo, out of TAM)</td>${v.act.rows.map(r => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right">${r.leak.toFixed(1)}</td>`).join('')}
+          <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:var(--c-down)">${spct(cagr(v.f.leak, v.l.leak))}</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">AI deflection removes paid agent seats from both cloud and on-premises contact-centre revenue; the deflected volume reappears as AI-CX spend, of which a rising share leaks to CRM and orchestration vendors outside this TAM.</div>
+    </section>`;
+  }
+
+  function regionsHTML(v) {
+    return `
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto">
+      <h2 style="margin:0 0 18px;font-size:17px;font-weight:600">2030 market by region</h2>
+      <div style="display:flex;flex-direction:column;gap:10px">
+      ${v.regions.map(r => `
+        <div style="display:grid;grid-template-columns:minmax(104px,210px) minmax(0,1fr) 84px 68px 74px;gap:14px;align-items:center">
+          <div style="font-size:13.5px;font-weight:500">${r.name}</div>
+          <div style="height:22px;background:var(--c-bg);border-radius:4px;overflow:hidden"><div style="${bar(r.t30 / v.maxRegion, C.purple, '22px', '4px')}"></div></div>
+          <div class="tnum" style="text-align:right;font-size:14px">${fb(r.t30)}</div>
+          <div class="tnum" style="text-align:right;font-size:13px;color:${growthColor(r.cagr - 0.14)}">${spct(r.cagr)}</div>
+          <div class="tnum" style="text-align:right;font-size:12.5px;color:var(--c-dim)">${pct(r.cloudShare,0)}</div>
+        </div>`).join('')}
+      </div>
+    </section>
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
+      <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">Rooms up for grabs by region</h2>
+      <div style="display:flex;flex-direction:column;gap:9px">
+      ${v.regions.slice().sort((a,b) => b.grabs - a.grabs).map(r => `
+        <div style="display:grid;grid-template-columns:minmax(96px,150px) minmax(0,1fr) 62px;gap:12px;align-items:center">
+          <div style="font-size:12.5px">${r.name}</div>
+          <div style="height:8px;background:var(--c-bg);border-radius:3px;overflow:hidden"><div style="${bar(r.grabs / v.maxGrabs, C.teal, '8px')}"></div></div>
+          <div class="tnum" style="text-align:right;font-size:12.5px">${r.grabs.toFixed(2)}M</div>
+        </div>`).join('')}
+      </div>
+    </section>`;
+  }
+
+  function roomsHTML(v) {
+    return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px">
+      <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.purple};border-radius:10px;padding:16px 18px">
+        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Total meeting rooms</div>
+        <div class="tnum" style="font-size:30px;font-weight:600">${v.roomsTotal.toFixed(1)}M</div>
+        <div style="font-size:12.5px;color:var(--c-muted)">Under 10% video-enabled</div>
+      </div>
+      <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.teal};border-radius:10px;padding:16px 18px">
+        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Up for grabs</div>
+        <div class="tnum" style="font-size:30px;font-weight:600">${v.grabsTotal.toFixed(1)}M</div>
+        <div style="font-size:12.5px;color:var(--c-muted)">Addressable, unequipped rooms</div>
+      </div>
+      <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid var(--c-insight-soft);border-radius:10px;padding:16px 18px">
+        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Greenfield device TAM</div>
+        <div class="tnum" style="font-size:30px;font-weight:600">${fb(v.deviceTamTotal,0)}</div>
+        <div style="font-size:12.5px;color:var(--c-muted)">One-time hardware, plus ${fb(v.ctrlTotal,0)} controllers</div>
+      </div>
+    </div>
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
+      <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">By room size</h2>
+      <table style="width:100%;min-width:620px;border-collapse:collapse;font-size:13px">
+        <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
+          <th style="text-align:left;padding:0 0 8px">Room size</th><th style="text-align:right;padding:0 0 8px 14px">Rooms M</th>
+          <th style="text-align:right;padding:0 0 8px 14px">Enabled</th><th style="text-align:right;padding:0 0 8px 14px">Grabs M</th>
+          <th style="text-align:right;padding:0 0 8px 14px">$/room</th><th style="text-align:right;padding:0 0 8px 14px">Device TAM</th></tr></thead>
+        <tbody>
+        ${v.sizes.map(s => `<tr style="border-top:1px solid var(--c-rule)">
+          <td style="padding:9px 0;font-weight:500">${s.name}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:var(--c-muted)">${s.roomsM.toFixed(1)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:var(--c-muted)">${pct(s.enabled,0)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:${C.teal}">${s.grabsM.toFixed(1)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:var(--c-muted)">$${s.price.toLocaleString()}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(s.tamB,0)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </section>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;margin-top:22px">
+      <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
+        <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">By ecosystem</h2>
+        <div style="display:flex;flex-direction:column;gap:11px">
+        ${ECOSYSTEMS().map(e => {
+          const rooms = v.grabsTotal * e.share;
+          return `<div style="display:grid;grid-template-columns:minmax(0,1fr) 70px 70px;gap:12px;align-items:center">
+            <div><div style="font-size:13px;font-weight:500">${e.name}</div><div style="height:7px;background:var(--c-bg);border-radius:3px;overflow:hidden;margin-top:5px"><div style="${bar(e.share/0.33, e.color, '7px')}"></div></div></div>
+            <div class="tnum" style="text-align:right;font-size:12.5px;color:var(--c-muted)">${rooms.toFixed(1)}M</div>
+            <div class="tnum" style="text-align:right;font-size:12.5px">${fb(rooms * e.price / 1000, 0)}</div></div>`;
+        }).join('')}
+        </div>
+      </section>
+    </div>`;
+  }
+
+  function competeHTML(v) {
+    const convShare2030 = 0.62;
+    return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px">
+      <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.teal};border-radius:10px;padding:16px 18px">
+        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Your SOM today</div>
+        <div class="tnum" style="font-size:30px;font-weight:600">${fb(v.somNow,2)}</div>
+        <div style="font-size:12.5px;color:var(--c-muted)">${pct(v.somNow / v.f.software, 2)} of current software market</div>
+      </div>
+      <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.purple};border-radius:10px;padding:16px 18px">
+        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Your SOM 2030</div>
+        <div class="tnum" style="font-size:30px;font-weight:600">${fb(v.som30,2)}</div>
+        <div style="font-size:12.5px;color:var(--c-muted)">At an unchanged win rate</div>
+      </div>
+      <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.indigo};border-radius:10px;padding:16px 18px">
+        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Converged MultiCaaS 2030</div>
+        <div class="tnum" style="font-size:30px;font-weight:600">${fb((v.l.ucaas + v.l.ccaas) * convShare2030, 0)}</div>
+        <div style="font-size:12.5px;color:var(--c-muted)">Single-platform UC + CC, not additive</div>
+      </div>
+    </div>
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
+      <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">Where the obtainable market comes from</h2>
+      <table style="width:100%;min-width:620px;border-collapse:collapse;font-size:13px">
+        <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
+          <th style="text-align:left;padding:0 0 8px">Product</th><th style="text-align:right;padding:0 0 8px 14px">Top-5 held</th>
+          <th style="text-align:right;padding:0 0 8px 14px">Other pool</th><th style="text-align:right;padding:0 0 8px 14px">Obtainable</th>
+          <th style="text-align:right;padding:0 0 8px 14px">SOM now</th><th style="text-align:right;padding:0 0 8px 14px">SOM 2030</th></tr></thead>
+        <tbody>
+        ${v.somRows.map(s => `<tr style="border-top:1px solid var(--c-rule)">
+          <td style="padding:9px 0;font-weight:500">${s.name}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:var(--c-muted)">${pct(s.held,0)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:var(--c-muted)">${pct(1-s.held,0)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:${C.teal}">${pct(s.share,2)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(s.now,2)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(s.y2030,2)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </section>
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
+      <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">Leaders by product</h2>
+      <div style="display:flex;flex-direction:column;gap:16px">
+      ${LANDSCAPE().map(l => `
+        <div>
+          <div style="display:grid;grid-template-columns:minmax(92px,150px) minmax(0,1fr);gap:16px;align-items:center">
+            <div style="font-size:13.5px;font-weight:600">${l.product}</div>
+            <div style="display:flex;height:26px;border-radius:4px;overflow:hidden;background:var(--c-bg)">
+              ${l.players.map(([name, share], i) => `<div style="width:${share*100}%;background:${name==='Other'?'var(--c-edge-tint)':PLAYER_COLORS[i]};display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;font-size:11px;font-weight:500;color:${name==='Other'?C.teal:'var(--c-text)'};border-right:1px solid var(--c-panel)" title="${name} ${pct(share,0)}">${share>=0.08?pct(share,0):''}</div>`).join('')}
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:7px">
+          ${l.players.map(([name, share], i) => `<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--c-muted);white-space:nowrap"><div style="width:8px;height:8px;border-radius:2px;background:${name==='Other'?'var(--c-edge-tint)':PLAYER_COLORS[i]}"></div>${name} ${pct(share,0)}</div>`).join('')}
+          </div>
+        </div>`).join('')}
+      </div>
+    </section>`;
+  }
+
+  function aiHTML(v) {
+    return `
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap">
+        <div style="max-width:620px">
+          <h2 style="margin:0;font-size:17px;font-weight:600">Token economics of a deflected contact</h2>
+          <div style="font-size:12.5px;color:var(--c-muted);margin-top:6px">Per-agent ARPU is a seat analogue bolted onto something nobody sells per seat. Price the tokens instead and AI-CX becomes a volume × price × unit-cost question.</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${[['resolution','Per resolution'],['aiagent','Per AI agent'],['agent','Per deflected human agent']].map(([k,label]) => `<button data-aimode="${k}" style="background:transparent;border:1px solid ${state.aiMode===k?C.teal:'var(--c-border)'};color:${state.aiMode===k?C.teal:'var(--c-muted)'};font-size:12px;padding:7px 12px;border-radius:8px;cursor:pointer">${label}</button>`).join('')}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:16px">
+        <div style="border-top:2px solid ${C.teal};padding-top:12px"><div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">AI resolutions 2030</div><div class="tnum" style="font-size:26px;font-weight:600">${v.aiLast.resolutions.toFixed(1)}B</div></div>
+        <div style="border-top:2px solid ${C.purple};padding-top:12px"><div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Cost per resolution</div><div class="tnum" style="font-size:26px;font-weight:600">$${v.aiLast.cost.toFixed(3)}</div></div>
+        <div style="border-top:2px solid ${C.indigo};padding-top:12px"><div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">AI-CX revenue 2030</div><div class="tnum" style="font-size:26px;font-weight:600">${fb(v.aiLast.revenue)}</div></div>
+        <div style="border-top:2px solid var(--c-insight-soft);padding-top:12px"><div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Buyer saving 2030</div><div class="tnum" style="font-size:26px;font-weight:600">${fb(v.aiLast.buyerSaving,0)}</div></div>
+      </div>
+    </section>
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:18px 20px;overflow-x:auto;margin-top:22px">
+      <h2 style="margin:0 0 14px;font-size:17px;font-weight:600">Unit economics by year</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px">
+        <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
+          <th style="text-align:left;padding:0 0 8px">Year</th><th style="text-align:right;padding:0 0 8px 14px">Resolutions B</th>
+          <th style="text-align:right;padding:0 0 8px 14px">Cost</th><th style="text-align:right;padding:0 0 8px 14px">Price</th>
+          <th style="text-align:right;padding:0 0 8px 14px">Margin</th><th style="text-align:right;padding:0 0 8px 14px">Revenue</th></tr></thead>
+        <tbody>
+        ${v.ai.map(r => `<tr style="border-top:1px solid var(--c-rule)">
+          <td style="padding:9px 0;font-weight:500">${r.year}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${r.resolutions.toFixed(1)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">$${r.cost.toFixed(3)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">$${r.realised.toFixed(2)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:${r.margin<0.5?'var(--c-down)':C.teal}">${pct(r.margin,0)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(r.revenue)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </section>`;
+  }
+
+  function sliderRow(key, label, min, max, step, fmt, note) {
+    const val = state[key];
+    return `<div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <div style="font-size:12.5px;color:var(--c-text2)">${label}</div>
+        <div class="tnum" style="font-size:12.5px;color:${C.teal}">${fmt(val)}</div>
+      </div>
+      <input type="range" data-lever="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%;height:4px;cursor:pointer">
+      <div style="font-size:11px;color:var(--c-dim);line-height:1.45">${note}</div>
+    </div>`;
+  }
+  function sliderMonthly(key, label, minM, maxM, stepM, note) {
+    const perMonth = state[key] / 12;
+    return `<div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <div style="font-size:12.5px;color:var(--c-text2)">${label}</div>
+        <div style="display:flex;gap:6px"><div class="tnum" style="font-size:12.5px;color:${C.teal}">$${perMonth.toFixed(2)} /user /mo</div></div>
+      </div>
+      <input type="range" data-levermonthly="${key}" min="${minM}" max="${maxM}" step="${stepM}" value="${perMonth}" style="width:100%;height:4px;cursor:pointer">
+      <div style="font-size:11px;color:var(--c-dim);line-height:1.45">${note}</div>
+    </div>`;
+  }
+
+  function railHTML(v) {
+    const w = v.dep.w;
+    const deployBtn = (key, label) => `<button data-deploy="${key}" style="flex:1;background:transparent;border:1px solid ${state.deploy===key?'var(--c-trust)':'var(--c-border)'};color:${state.deploy===key?'var(--c-trust-lift)':'var(--c-muted)'};font-size:12px;padding:8px 6px;border-radius:8px;cursor:pointer">${label}</button>`;
+    let groups = [
+      { title: 'Unified comms', items: [
+        w.ucaas > 0 ? sliderMonthly('ucArpu', 'Cloud seat', 12, 34, 0.5, 'List-style price per user per month for cloud phone and collaboration.') : '',
+        w.ucop > 0 ? sliderRow('opArpu', 'On-prem seat, per year', 20, 80, 5, x => '$'+x, 'Support revenue per legacy on-premises phone seat.') : ''
+      ].filter(Boolean) },
+      { title: 'Contact centre', items: [
+        w.ccaas > 0 ? sliderMonthly('ccArpu', 'Cloud agent', 75, 210, 0.5, 'Price per agent per month for a cloud contact-centre seat.') : '',
+        w.ccop > 0 ? sliderRow('ccOpArpu', 'On-prem agent, per year', 150, 400, 10, x => '$'+x, 'Support revenue per legacy on-premises agent seat.') : '',
+        sliderRow('agentScale', 'Human agent-count scaler', 0.7, 1.3, 0.05, x => x.toFixed(2)+'×', 'One dial for the world\u2019s HUMAN contact-centre agents.')
+      ].filter(Boolean) },
+      { title: 'CPaaS', items: [
+        w.cpaas > 0 ? sliderRow('cpaasMult', 'Ceiling vs today\u2019s spend', 1.5, 3, 0.1, x => x.toFixed(1)+'×', 'How much bigger CPaaS could get if every business messaged programmatically.') : ''
+      ].filter(Boolean) },
+      { title: 'Your position', items: [
+        sliderRow('winRate', 'Win rate', 0.02, 0.3, 0.01, x => (x*100).toFixed(0)+'%', 'The share you win of the contestable pool.')
+      ] }
+    ].filter(g => g.items.length);
+
+    const aiLeversHTML = v.tab === 'ai' ? `
+      <div style="display:flex;flex-direction:column;gap:18px;border-top:1px solid var(--c-rule);padding-top:16px">
+        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:${C.teal}">AI cost levers</div>
+        ${sliderRow('tokRes','How much the AI reads per contact',4000,40000,1000,x=>(x/1000).toFixed(0)+'k words-ish','Chat history and account data pulled in per question.')}
+        ${sliderRow('intensity','Extra thinking each year',0,0.8,0.05,x=>'+'+(x*100).toFixed(0)+'% a year','How fast token use per contact grows.')}
+        ${sliderRow('declRate','How fast AI gets cheaper',0.1,0.7,0.05,x=>(x*100).toFixed(0)+'% cheaper / yr','Rate of token price decline.')}
+        ${sliderRow('pricePerRes','What you charge per resolved contact',0.1,3,0.05,x=>'$'+x.toFixed(2),'Outcome price a buyer pays.')}
+      </div>` : '';
+
+    return `
+    <aside data-rail="true" style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:20px;position:sticky;top:20px;display:flex;flex-direction:column;gap:18px">
+      <div><div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-trust-lift)">Master levers</div><div style="font-size:12px;color:var(--c-dim)">Drag to re-run the whole model.</div></div>
+      <div style="display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--c-rule);padding-bottom:16px">
+        <div style="font-size:12.5px;font-weight:500">What do you sell?</div>
+        <div style="display:flex;gap:5px">${deployBtn('cloud','Cloud')}${deployBtn('hybrid','Hybrid')}${deployBtn('onprem','On-prem')}</div>
+        <div style="font-size:11px;color:var(--c-dim);line-height:1.45">${v.dep.note}</div>
+      </div>
+      ${groups.map(g => `<div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--c-trust-lift);font-weight:600;border-bottom:1px solid var(--c-rule);padding-bottom:7px">${g.title}</div>
+        ${g.items.join('')}
+      </div>`).join('')}
+      ${aiLeversHTML}
+      <button id="resetBtn" style="margin-top:2px;background:transparent;border:1px solid var(--c-border);color:var(--c-muted);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:9px 12px;border-radius:7px;cursor:pointer">Reset to calibrated</button>
+      <div style="border-top:1px solid var(--c-rule);padding-top:14px;font-size:11.5px;color:var(--c-dim);line-height:1.5">Counts are formal, registered and officially-estimated entities. ARPUs and cloud shares are calibrated to published 2024 analyst figures; the SAM weight and the UC seat base/cloud-share split are computed live from each country&#39;s World Bank readiness tier where available (seat and cloud-share figures are Modelled-Directional, sourced from ITU connectivity data and World Bank Enterprise Surveys — see Methodology tab). Everything downstream is model output, not measurement.</div>
+    </aside>`;
+  }
+
+  function render() {
+    const v = build();
+    const tabHTML = { overview: overviewHTML, forecast: forecastHTML, regions: regionsHTML, rooms: roomsHTML, compete: competeHTML, ai: aiHTML }[v.tab](v);
+    document.getElementById('app').innerHTML = `
+      <div data-page="true" style="min-height:100vh;background:var(--c-bg);color:var(--c-text);padding:28px 32px 56px">
+        ${headerHTML(v)}
+        <div data-shell="true" style="display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:28px;align-items:start">
+          <main style="min-width:0">${tabHTML}</main>
+          ${railHTML(v)}
+        </div>
+      </div>`;
+    document.documentElement.setAttribute('data-theme', state.theme);
+    wireEvents();
+  }
+
+  function wireEvents() {
+    document.querySelectorAll('[data-tab]').forEach(el => el.onclick = () => setState({ tab: el.dataset.tab }));
+    document.querySelectorAll('[data-scen]').forEach(el => el.onclick = () => setState({ scenario: el.dataset.scen }));
+    document.querySelectorAll('[data-deploy]').forEach(el => el.onclick = () => setState({ deploy: el.dataset.deploy }));
+    document.querySelectorAll('[data-aimode]').forEach(el => el.onclick = () => setState({ aiMode: el.dataset.aimode }));
+    document.querySelectorAll('[data-lever]').forEach(el => el.oninput = () => setState({ [el.dataset.lever]: parseFloat(el.value) }));
+    document.querySelectorAll('[data-levermonthly]').forEach(el => el.oninput = () => setState({ [el.dataset.levermonthly]: parseFloat(el.value) * 12 }));
+    const themeBtn = document.getElementById('themeBtn');
+    if (themeBtn) themeBtn.onclick = () => setState({ theme: state.theme === 'light' ? 'dark' : 'light' });
+    const resetBtn = document.getElementById('resetBtn');
+    if (resetBtn) resetBtn.onclick = () => setState({ ...DEFAULTS() });
+  }
+
+  render();
+  loadLiveModel().then(data => {
+    LIVE = data;
+    const gotRegions = data.regionsForecast && data.regionsForecast.length === 10;
+    const gotRooms = data.roomSizes && data.roomSizes.length === 4;
+    const gotDemand = data.demandDefaults && Object.keys(data.demandDefaults).length > 0;
+    const gotSom = data.somDef && data.somDef.length === 5;
+    const gotReadiness = data.readinessTiers && data.readinessTiers.length > 0;
+    const gotAdoption = data.seats0Adoption && data.ucShare0Adoption;
+    liveStatus = (gotRegions || gotRooms || gotDemand || gotSom || gotReadiness || gotAdoption) ? 'live' : 'fallback';
+    if (gotDemand) Object.assign(state, data.demandDefaults);
+    render();
+  }).catch(err => { console.warn('Live model load failed entirely, using baseline:', err); liveStatus = 'fallback'; render(); });
+})();
+</script>
+</body>
+</html>
