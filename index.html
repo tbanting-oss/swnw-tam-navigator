@@ -39,6 +39,10 @@
     [data-page] { padding: 18px 14px 40px !important; }
     [data-page] h1 { font-size: 24px !important; }
   }
+  summary::-webkit-details-marker { display: none; }
+  summary::marker { content: ""; }
+  details[open] > summary .detailsChevron { transform: rotate(180deg); }
+  summary .detailsChevron { display: inline-block; transition: transform .15s ease; }
 </style>
 </head>
 <body>
@@ -930,23 +934,23 @@
     const deployBtn = (key, label) => `<button data-deploy="${key}" style="flex:1;background:transparent;border:1px solid ${state.deploy===key?'var(--c-trust)':'var(--c-border)'};color:${state.deploy===key?'var(--c-trust-lift)':'var(--c-muted)'};font-size:12px;padding:8px 6px;border-radius:8px;cursor:pointer">${label}</button>`;
     const segBtn = (key, label) => `<button data-sizeseg="${key}" style="flex:1;background:transparent;border:1px solid ${state.sizeSegment===key?'var(--c-trust)':'var(--c-border)'};color:${state.sizeSegment===key?'var(--c-trust-lift)':'var(--c-muted)'};font-size:11.5px;padding:7px 4px;border-radius:8px;cursor:pointer">${label}</button>`;
     let groups = [
-      { title: 'Unified comms', items: [
+      { title: 'Unified comms', open: true, items: [
         w.ucaas > 0 ? sliderMonthly('ucArpu', 'Cloud seat', 12, 34, 0.5, 'List-style price per user per month for cloud phone and collaboration.') : '',
         w.ucop > 0 ? sliderRow('opArpu', 'On-prem seat, per year', 20, 80, 5, x => '$'+x, 'Support revenue per legacy on-premises phone seat.') : ''
       ].filter(Boolean) },
-      { title: 'Contact centre', items: [
+      { title: 'Contact centre', open: true, items: [
         w.ccaas > 0 ? sliderMonthly('ccArpu', 'Cloud agent', 75, 210, 0.5, 'Price per agent per month for a cloud contact-centre seat.') : '',
         w.ccop > 0 ? sliderRow('ccOpArpu', 'On-prem agent, per year', 150, 400, 10, x => '$'+x, 'Support revenue per legacy on-premises agent seat.') : '',
         sliderRow('agentScale', 'Human agent-count scaler', 0.7, 1.3, 0.05, x => x.toFixed(2)+'×', 'One dial for the world\u2019s HUMAN contact-centre agents.')
       ].filter(Boolean) },
-      { title: 'Multi-CaaS', items: [
+      { title: 'Multi-CaaS', open: false, items: [
         w.ccaas > 0 ? sliderRow('multiCaaSArpuRatio', 'Bundled CC price vs. standalone', 0.15, 0.75, 0.01, x => (x*100).toFixed(0)+'% of standalone', 'Native suites (Zoom CX, RingCX, 8x8 XCaaS) price contact-centre seats well below dedicated CCaaS platforms (Genesys, NICE, Five9) to win volume. Calibrated base case: 40%. Raise it if bundled pricing rises as vendors close the feature gap; lower it if the discount war deepens.') : '',
         w.ccaas > 0 ? sliderRow('multiCaaSPace', 'Convergence speed', 0, 2, 0.05, x => x.toFixed(2)+'\u00d7', 'How fast contact-centre buyers move onto bundled Multi-CaaS platforms instead of standalone CCaaS, against the calibrated seat-band forecast (0-50 / 50-300 / 300+ seats, weighted by each band\u2019s share of CCaaS revenue). 1.0\u00d7 is the base case reaching ~37.5% of cloud CC revenue by 2030. 0\u00d7 freezes convergence at today\u2019s level; 2\u00d7 roughly doubles the pace toward each band\u2019s endpoint.') : ''
       ].filter(Boolean) },
-      { title: 'CPaaS', items: [
+      { title: 'CPaaS', open: false, items: [
         w.cpaas > 0 ? sliderRow('cpaasMult', 'Ceiling vs today\u2019s spend', 1.5, 3, 0.1, x => x.toFixed(1)+'×', 'How much bigger CPaaS could get if every business messaged programmatically.') : ''
       ].filter(Boolean) },
-      { title: 'Your position', items: [
+      { title: 'Your position', open: true, items: [
         sliderRow('winRate', 'Win rate', 0.02, 0.3, 0.01, x => (x*100).toFixed(0)+'%', 'The share you win of the contestable pool.')
       ] }
     ].filter(g => g.items.length);
@@ -963,20 +967,23 @@
     return `
     <aside data-rail="true" style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:20px;position:sticky;top:20px;display:flex;flex-direction:column;gap:18px">
       <div><div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-trust-lift)">Master levers</div><div style="font-size:12px;color:var(--c-dim)">Drag to re-run the whole model.</div></div>
-      <div style="display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--c-rule);padding-bottom:16px">
-        <div style="font-size:12.5px;font-weight:500">What do you sell?</div>
-        <div style="display:flex;gap:5px">${deployBtn('cloud','Cloud')}${deployBtn('hybrid','Hybrid')}${deployBtn('onprem','On-prem')}</div>
-        <div style="font-size:11px;color:var(--c-dim);line-height:1.45">${v.dep.note}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;border-bottom:1px solid var(--c-rule);padding-bottom:14px">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:11.5px;font-weight:500">What do you sell?</div>
+          <div style="display:flex;gap:4px">${deployBtn('cloud','Cloud')}${deployBtn('hybrid','Hybrid')}${deployBtn('onprem','On-prem')}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:11.5px;font-weight:500">Segment?</div>
+          <div style="display:flex;gap:4px">${segBtn('all','All')}${segBtn('smb','SMB')}${segBtn('mid','Mid')}${segBtn('ent','Ent.')}</div>
+        </div>
+        <div style="grid-column:1/-1;font-size:10.5px;color:var(--c-dim);line-height:1.4">${v.dep.note}${state.sizeSegment!=='all' ? ' Segment split is Modelled-Directional \u2014 see Methodology.' : ''}</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--c-rule);padding-bottom:16px">
-        <div style="font-size:12.5px;font-weight:500">Focus on a segment?</div>
-        <div style="display:flex;gap:5px">${segBtn('all','All')}${segBtn('smb','SMB')}${segBtn('mid','Mid')}${segBtn('ent','Ent.')}</div>
-        <div style="font-size:11px;color:var(--c-dim);line-height:1.45">${state.sizeSegment==='all' ? 'Every figure below is the full global market.' : 'Bottom-up size split (1-99 / 100-999 / 1,000+ employees, matching IDC\u2019s definitions), reconciled to the real global seat and agent totals. Modelled-Directional \u2014 not independently benchmarked per segment; see Methodology.'}</div>
-      </div>
-      ${groups.map(g => `<div style="display:flex;flex-direction:column;gap:14px">
-        <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--c-trust-lift);font-weight:600;border-bottom:1px solid var(--c-rule);padding-bottom:7px">${g.title}</div>
-        ${g.items.join('')}
-      </div>`).join('')}
+      ${groups.map(g => `<details ${g.open ? 'open' : ''} style="display:flex;flex-direction:column">
+        <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--c-trust-lift);font-weight:600;border-bottom:1px solid var(--c-rule);padding-bottom:7px;margin-bottom:12px">
+          <span>${g.title}</span><span class="detailsChevron" style="font-size:10px;color:var(--c-dim)">\u25be</span>
+        </summary>
+        <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:4px">${g.items.join('')}</div>
+      </details>`).join('')}
       ${aiLeversHTML}
       <button id="resetBtn" style="margin-top:2px;background:transparent;border:1px solid var(--c-border);color:var(--c-muted);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:9px 12px;border-radius:7px;cursor:pointer">Reset to calibrated</button>
       <div style="border-top:1px solid var(--c-rule);padding-top:14px;font-size:11.5px;color:var(--c-dim);line-height:1.5">Counts are formal, registered and officially-estimated entities. ARPUs and cloud shares are calibrated to published 2024 analyst figures; the SAM weight and the UC seat base/cloud-share split are computed live from each country&#39;s World Bank readiness tier where available (seat and cloud-share figures are Modelled-Directional, sourced from ITU connectivity data and World Bank Enterprise Surveys — see Methodology tab). Everything downstream is model output, not measurement.</div>
