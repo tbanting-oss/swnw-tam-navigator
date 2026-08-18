@@ -967,7 +967,7 @@
     return `
     <aside data-rail="true" style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:20px;position:sticky;top:20px;display:flex;flex-direction:column;gap:18px">
       <div><div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-trust-lift)">Master levers</div><div style="font-size:12px;color:var(--c-dim)">Drag to re-run the whole model.</div></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;border-bottom:1px solid var(--c-rule);padding-bottom:14px">
+      <div style="display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--c-rule);padding-bottom:14px">
         <div style="display:flex;flex-direction:column;gap:6px">
           <div style="font-size:11.5px;font-weight:500">What do you sell?</div>
           <div style="display:flex;gap:4px">${deployBtn('cloud','Cloud')}${deployBtn('hybrid','Hybrid')}${deployBtn('onprem','On-prem')}</div>
@@ -976,7 +976,7 @@
           <div style="font-size:11.5px;font-weight:500">Segment?</div>
           <div style="display:flex;gap:4px">${segBtn('all','All')}${segBtn('smb','SMB')}${segBtn('mid','Mid')}${segBtn('ent','Ent.')}</div>
         </div>
-        <div style="grid-column:1/-1;font-size:10.5px;color:var(--c-dim);line-height:1.4">${v.dep.note}${state.sizeSegment!=='all' ? ' Segment split is Modelled-Directional \u2014 see Methodology.' : ''}</div>
+        <div style="font-size:10.5px;color:var(--c-dim);line-height:1.4">${v.dep.note}${state.sizeSegment!=='all' ? ' Segment split is Modelled-Directional \u2014 see Methodology.' : ''}</div>
       </div>
       ${groups.map(g => `<details ${g.open ? 'open' : ''} style="display:flex;flex-direction:column">
         <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--c-trust-lift);font-weight:600;border-bottom:1px solid var(--c-rule);padding-bottom:7px;margin-bottom:12px">
