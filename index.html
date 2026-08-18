@@ -46,7 +46,7 @@
 <script>
 (function(){
   "use strict";
-  const C = { purple: 'var(--c-trust)', indigo: 'var(--c-insight)', teal: 'var(--c-edge)', lilac: 'var(--c-trust-soft)', amber: 'var(--c-insight-soft)', grey: 'var(--c-grey)', greyDark: 'var(--c-grey-dark)' };
+  const C = { purple: 'var(--c-trust)', indigo: 'var(--c-insight)', teal: 'var(--c-edge)', lilac: 'var(--c-trust-soft)', amber: 'var(--c-insight-soft)', grey: 'var(--c-grey)', greyDark: 'var(--c-grey-dark)', indigoLift: 'var(--c-insight-lift)' };
   const SCEN = {
     Conservative: { ucG: 0.02, agG: 0.01, cpG: 0.12, ucEnd: 0.45, ccEnd: 0.55, defl: 0.25, devG: 0.09, color: 'var(--c-grey-dark)' },
     Base:         { ucG: 0.03, agG: 0.02, cpG: 0.18, ucEnd: 0.52, ccEnd: 0.62, defl: 0.35, devG: 0.13, color: 'var(--c-trust)' },
@@ -98,9 +98,9 @@
     { product: 'CPaaS', players: [['Twilio', 0.28], ['Sinch', 0.12], ['Vonage', 0.12], ['Infobip', 0.10], ['Bandwidth', 0.06], ['Other', 0.32]] }
   ];
   const DEPLOY = {
-    cloud:  { label: 'Cloud', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 0, ccop: 0 }, note: 'Cloud lines only. On-premises support revenue is out of scope.' },
-    hybrid: { label: 'Hybrid', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 1, ccop: 1 }, note: 'Cloud and on-premises both in scope, including migration of your own installed base.' },
-    onprem: { label: 'On-prem', w: { ucaas: 0, ccaas: 0, cpaas: 0, ucop: 1, ccop: 1 }, note: 'On-premises support base only — a declining pool at support ARPU.' }
+    cloud:  { label: 'Cloud', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 0, ccop: 0, multicaas: 1 }, note: 'Cloud lines only. On-premises support revenue is out of scope.' },
+    hybrid: { label: 'Hybrid', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 1, ccop: 1, multicaas: 1 }, note: 'Cloud and on-premises both in scope, including migration of your own installed base.' },
+    onprem: { label: 'On-prem', w: { ucaas: 0, ccaas: 0, cpaas: 0, ucop: 1, ccop: 1, multicaas: 0 }, note: 'On-premises support base only — a declining pool at support ARPU.' }
   };
   const GRID_DECL = [0.20, 0.30, 0.40, 0.50, 0.60];
   const GRID_GROW = [0, 0.20, 0.40, 0.60, 0.80];
@@ -400,19 +400,23 @@
       const ucaas = seats * ucShare * st.ucArpu / 1000;
       const ucop = seats * (1 - ucShare) * st.opArpu / 1000;
       const multiCaaSShare = MULTICAAS_CONV_BY_YEAR[i];
-      const ccArpuBlended = st.ccArpu * (1 - multiCaaSShare * (1 - MULTICAAS_ARPU_RATIO));
-      const ccaasFullPrice = agents * ccShare * st.ccArpu * dFactor * outcome / 1000;
-      const ccaas = agents * ccShare * ccArpuBlended * dFactor * outcome / 1000;
-      const ccaasErosion = ccaasFullPrice - ccaas;
+      // Split cloud CC revenue into standalone CCaaS and bundled Multi-CaaS,
+      // by agent share converged rather than by blending one ARPU — this
+      // keeps both as real, additive line items instead of a single number
+      // with an invisible discount baked in. Sum is identical to a single
+      // blended-ARPU calculation; see MULTICAAS_ARPU_RATIO above.
+      const ccAgentsCloud = agents * ccShare;
+      const ccaas = ccAgentsCloud * (1 - multiCaaSShare) * st.ccArpu * dFactor * outcome / 1000;
+      const multicaas = ccAgentsCloud * multiCaaSShare * st.ccArpu * MULTICAAS_ARPU_RATIO * dFactor * outcome / 1000;
       const ccop = agents * (1 - ccShare) * st.ccOpArpu * dFactor / 1000;
       const cpaas = CPAAS0() * Math.pow(1 + s.cpG, i) * uplift;
       const aiBase = aiGross(agents, defl).gross;
       const ai = aiBase * capture, leak = aiBase * (1 - capture);
       const devices = DEV0() * Math.pow(1 + s.devG, i);
       return { year, seats, agents, ucShare, ccShare, ucaas, ucop, ccaas, ccop, cpaas, ai, leak, devices,
-        multiCaaSShare, ccaasFullPrice, ccaasErosion,
-        software: ucaas + ucop + ccaas + ccop + cpaas, cloud: ucaas + ccaas + cpaas, onprem: ucop + ccop,
-        total: ucaas + ucop + ccaas + ccop + cpaas + ai + devices };
+        multicaas, multiCaaSShare,
+        software: ucaas + ucop + ccaas + ccop + cpaas + multicaas, cloud: ucaas + ccaas + cpaas + multicaas, onprem: ucop + ccop,
+        total: ucaas + ucop + ccaas + ccop + cpaas + multicaas + ai + devices };
     });
     return { rows, first: rows[0], last: rows[5] };
   }
@@ -445,7 +449,7 @@
     const maxScen = Math.max(alt.Conservative.last.total, alt.Base.last.total, alt.Bull.last.total);
     const dep = DEPLOY[st.deploy] || DEPLOY.hybrid;
     const w = dep.w;
-    const scoped = (row) => row.ucaas * w.ucaas + row.ucop * w.ucop + row.ccaas * w.ccaas + row.ccop * w.ccop + row.cpaas * w.cpaas;
+    const scoped = (row) => row.ucaas * w.ucaas + row.ucop * w.ucop + row.ccaas * w.ccaas + row.ccop * w.ccop + row.cpaas * w.cpaas + row.multicaas * w.multicaas;
     const tam = st.deploy === 'onprem'
       ? f.seats * st.opArpu / 1000 + f.agents * st.ccOpArpu / 1000
       : f.seats * st.ucArpu / 1000 + f.agents * st.ccArpu / 1000 + CPAAS0() * st.cpaasMult
@@ -456,6 +460,7 @@
     const prodDefs = [
       { key: 'ucaas', name: 'UCaaS', color: C.purple }, { key: 'cpaas', name: 'CPaaS', color: C.teal },
       { key: 'ucop', name: 'UC on-premises', color: C.grey }, { key: 'ccaas', name: 'CCaaS', color: C.indigo },
+      { key: 'multicaas', name: 'Multi-CaaS (bundled UC+CC)', color: C.indigoLift },
       { key: 'ccop', name: 'CC on-premises', color: C.greyDark }, { key: 'ai', name: 'Conversational AI / AI-CX', color: C.lilac },
       { key: 'devices', name: 'Video devices (rooms)', color: C.amber }
     ];
@@ -607,7 +612,7 @@
             <td class="tnum" style="padding:9px 0 9px 18px;text-align:right;color:${C.teal}">${spct(cagr(v.f.total, v.l.total))}</td></tr>
           </tbody>
         </table>
-        <div style="font-size:11.5px;color:var(--c-dim);margin-top:12px">CCaaS is net of Multi-CaaS erosion (${fb(v.l.ccaasErosion,1)} by 2030 — see Forecast 2025–2030 for detail).</div>
+        <div style="font-size:11.5px;color:var(--c-dim);margin-top:12px">Multi-CaaS is bundled UC+CC revenue at native suite pricing, split out from standalone CCaaS — see Forecast 2025–2030 for detail.</div>
       </section>
       <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
         <h2 style="margin:0 0 18px;font-size:17px;font-weight:600">2030 total by scenario</h2>
@@ -670,12 +675,9 @@
         <tr style="border-top:1px solid var(--c-rule);color:var(--c-muted)">
           <td style="padding:8px 0">CRM leakage (memo, out of TAM)</td>${v.act.rows.map(r => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right">${r.leak.toFixed(1)}</td>`).join('')}
           <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:var(--c-down)">${spct(cagr(v.f.leak, v.l.leak))}</td></tr>
-        <tr style="border-top:1px solid var(--c-rule);color:var(--c-muted)">
-          <td style="padding:8px 0">Multi-CaaS erosion (memo, already netted from CCaaS above)</td>${v.act.rows.map(r => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right">${r.ccaasErosion.toFixed(1)}</td>`).join('')}
-          <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:var(--c-down)">${spct(cagr(v.f.ccaasErosion, v.l.ccaasErosion))}</td></tr>
         </tbody>
       </table>
-      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">AI deflection removes paid agent seats from both cloud and on-premises contact-centre revenue; the deflected volume reappears as AI-CX spend, of which a rising share leaks to CRM and orchestration vendors outside this TAM. CCaaS revenue above is reduced by ARPU compression as a rising share of CC agents move to bundled Multi-CaaS platforms rather than standalone CCaaS — the Multi-CaaS erosion line is the memo of that reduction, not additional spend.</div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">AI deflection removes paid agent seats from both cloud and on-premises contact-centre revenue; the deflected volume reappears as AI-CX spend, of which a rising share leaks to CRM and orchestration vendors outside this TAM. Multi-CaaS is bundled UC+CC revenue split out from standalone CCaaS, priced at native-suite rates rather than dedicated-platform rates — see Regions & countries assumptions for the seat-band basis.</div>
     </section>`;
   }
 
@@ -773,10 +775,10 @@
         <div class="tnum" style="font-size:30px;font-weight:600">${fb(v.som30,2)}</div>
         <div style="font-size:12.5px;color:var(--c-muted)">At an unchanged win rate</div>
       </div>
-      <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.indigo};border-radius:10px;padding:16px 18px">
-        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Multi-CaaS erosion 2030</div>
-        <div class="tnum" style="font-size:30px;font-weight:600">-${fb(v.l.ccaasErosion, 1)}</div>
-        <div style="font-size:12.5px;color:var(--c-muted)">${pct(v.l.multiCaaSShare, 0)} of CC revenue on bundled Multi-CaaS pricing, already netted out of CCaaS above</div>
+      <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.indigoLift};border-radius:10px;padding:16px 18px">
+        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Multi-CaaS 2030</div>
+        <div class="tnum" style="font-size:30px;font-weight:600">${fb(v.l.multicaas, 1)}</div>
+        <div style="font-size:12.5px;color:var(--c-muted)">${pct(v.l.multiCaaSShare, 0)} of cloud CC revenue on bundled native suites vs. standalone CCaaS</div>
       </div>
     </div>
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
