@@ -88,11 +88,11 @@
     { name: 'Google Meet hardware', share: 0.08, price: 3500, color: C.amber }
   ];
   const SOM_DEF_BASE = [
-    { key: 'ucaas', name: 'UCaaS', held: 0.66, contest: 0.15 },
-    { key: 'ucop', name: 'UC on-premises', held: 0.72, contest: 0.30 },
-    { key: 'ccaas', name: 'CCaaS', held: 0.71, contest: 0.15 },
-    { key: 'ccop', name: 'CC on-premises', held: 0.69, contest: 0.30 },
-    { key: 'cpaas', name: 'CPaaS', held: 0.68, contest: 0.15 }
+    { key: 'ucaas', name: 'UCaaS', held: 0.57, contest: 0.15 },
+    { key: 'ucop', name: 'UC on-premises', held: 0.80, contest: 0.30 },
+    { key: 'ccaas', name: 'CCaaS', held: 0.68, contest: 0.15 },
+    { key: 'ccop', name: 'CC on-premises', held: 0.72, contest: 0.30 },
+    { key: 'cpaas', name: 'CPaaS', held: 0.45, contest: 0.15 }
   ];
   const DEPLOY = {
     cloud:  { label: 'Cloud', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 0, ccop: 0, multicaas: 1 }, note: 'Cloud lines only. On-premises support revenue is out of scope.' },
@@ -143,7 +143,8 @@
   const DEFAULTS_BASE = { ucArpu: 240, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, winRate: 0.10,
     tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
     aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
-    multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all' };
+    multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all',
+    somHeldUcaas: 0.57, somHeldUcop: 0.80, somHeldCcaas: 0.68, somHeldCcop: 0.72, somHeldCpaas: 0.45 };
   const AI = { priceIn: 1.00, priceOut: 4.00, cacheHit: 0.60, outRatio: 0.125, containment: 0.75,
     voicePerMin: 0.015, voiceDecl: 0.15, humanCost: 5.00, agentArpu: 2500 };
   // Per-tier SAM weights, matching Control Panel's 'SAM weight - Tier N' rows.
@@ -512,9 +513,11 @@
     const ctrlTotal = sizes.reduce((a, s) => a + s.ctrlB, 0);
     const maxSizeTam = Math.max(...sizes.map(s => s.tamB));
 
+    const SOM_HELD_KEY = { ucaas: 'somHeldUcaas', ucop: 'somHeldUcop', ccaas: 'somHeldCcaas', ccop: 'somHeldCcop', cpaas: 'somHeldCpaas' };
     const somRows = SOM_DEF().filter(d => w[d.key] > 0).map(d => {
-      const share = st.winRate * ((1 - d.held) + d.contest * d.held);
-      return { ...d, share, now: share * f[d.key] * w[d.key], y2030: share * l[d.key] * w[d.key] };
+      const held = st[SOM_HELD_KEY[d.key]] ?? d.held;
+      const share = st.winRate * ((1 - held) + d.contest * held);
+      return { ...d, held, share, now: share * f[d.key] * w[d.key], y2030: share * l[d.key] * w[d.key] };
     });
     const somNow = somRows.reduce((a, r) => a + r.now, 0), som30 = somRows.reduce((a, r) => a + r.y2030, 0);
     const maxSom = Math.max(...somRows.map(r => r.y2030));
@@ -911,7 +914,14 @@
       ].filter(Boolean) },
       { title: 'Your position', open: true, items: [
         sliderRow('winRate', 'Win rate', 0.02, 0.3, 0.01, x => (x*100).toFixed(0)+'%', 'The share you win of the contestable pool.')
-      ] }
+      ] },
+      { title: 'Competitive concentration', open: false, items: [
+        w.ucaas > 0 ? sliderRow('somHeldUcaas', 'UCaaS top-5 held', 0.20, 0.90, 0.01, x => (x*100).toFixed(0)+'%', 'Share of this market held by the top 5 vendors. Our own secondary research into publicly reported 2025 vendor revenue puts this in the high-50s \u2014 lower than it might look, since the next tier of challengers still holds meaningful share.') : '',
+        w.ucop > 0 ? sliderRow('somHeldUcop', 'UC on-prem top-5 held', 0.20, 0.95, 0.01, x => (x*100).toFixed(0)+'%', 'On-premises UC is a small, shrinking, and highly concentrated field \u2014 our secondary research points to one vendor alone holding close to half of global revenue.') : '',
+        w.ccaas > 0 ? sliderRow('somHeldCcaas', 'CCaaS top-5 held', 0.20, 0.90, 0.01, x => (x*100).toFixed(0)+'%', 'Share of this market held by the top 5 vendors, per our own secondary research into publicly reported 2025 vendor revenue.') : '',
+        w.ccop > 0 ? sliderRow('somHeldCcop', 'CC on-prem top-5 held', 0.20, 0.95, 0.01, x => (x*100).toFixed(0)+'%', 'A small, concentrated vendor field \u2014 the top 3 alone account for roughly 60% of this shrinking market per our own secondary research.') : '',
+        w.cpaas > 0 ? sliderRow('somHeldCpaas', 'CPaaS top-5 held', 0.20, 0.90, 0.01, x => (x*100).toFixed(0)+'%', 'CPaaS is more fragmented than the other product lines \u2014 our secondary research puts top-5 concentration under 50%, well below a typical software market.') : ''
+      ].filter(Boolean) }
     ].filter(g => g.items.length);
 
     const aiLeversHTML = v.tab === 'ai' ? `
