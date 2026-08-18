@@ -144,7 +144,8 @@
     tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
     aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
     multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all',
-    somHeldUcaas: 0.57, somHeldUcop: 0.80, somHeldCcaas: 0.68, somHeldCcop: 0.72, somHeldCpaas: 0.45 };
+    somHeldUcaas: 0.57, somHeldUcop: 0.80, somHeldCcaas: 0.68, somHeldCcop: 0.72, somHeldCpaas: 0.45,
+    openGroups: { unifiedcomms: true, contactcentre: true, multicaas: false, cpaas: false, position: true, competition: false } };
   const AI = { priceIn: 1.00, priceOut: 4.00, cacheHit: 0.60, outRatio: 0.125, containment: 0.75,
     voicePerMin: 0.015, voiceDecl: 0.15, humanCost: 5.00, agentArpu: 2500 };
   // Per-tier SAM weights, matching Control Panel's 'SAM weight - Tier N' rows.
@@ -896,26 +897,26 @@
     const deployBtn = (key, label) => `<button data-deploy="${key}" style="flex:1;background:transparent;border:1px solid ${state.deploy===key?'var(--c-trust)':'var(--c-border)'};color:${state.deploy===key?'var(--c-trust-lift)':'var(--c-muted)'};font-size:12px;padding:8px 6px;border-radius:8px;cursor:pointer">${label}</button>`;
     const segBtn = (key, label) => `<button data-sizeseg="${key}" style="flex:1;background:transparent;border:1px solid ${state.sizeSegment===key?'var(--c-trust)':'var(--c-border)'};color:${state.sizeSegment===key?'var(--c-trust-lift)':'var(--c-muted)'};font-size:11.5px;padding:7px 4px;border-radius:8px;cursor:pointer">${label}</button>`;
     let groups = [
-      { title: 'Unified comms', open: true, items: [
+      { title: 'Unified comms', key: 'unifiedcomms', items: [
         w.ucaas > 0 ? sliderMonthly('ucArpu', 'Cloud seat', 12, 34, 0.5, 'List-style price per user per month for cloud phone and collaboration.') : '',
         w.ucop > 0 ? sliderRow('opArpu', 'On-prem seat, per year', 20, 80, 5, x => '$'+x, 'Support revenue per legacy on-premises phone seat.') : ''
       ].filter(Boolean) },
-      { title: 'Contact centre', open: true, items: [
+      { title: 'Contact centre', key: 'contactcentre', items: [
         w.ccaas > 0 ? sliderMonthly('ccArpu', 'Cloud agent', 75, 210, 0.5, 'Price per agent per month for a cloud contact-centre seat.') : '',
         w.ccop > 0 ? sliderRow('ccOpArpu', 'On-prem agent, per year', 150, 400, 10, x => '$'+x, 'Support revenue per legacy on-premises agent seat.') : '',
         sliderRow('agentScale', 'Human agent-count scaler', 0.7, 1.3, 0.05, x => x.toFixed(2)+'×', 'One dial for the world\u2019s HUMAN contact-centre agents.')
       ].filter(Boolean) },
-      { title: 'Multi-CaaS', open: false, items: [
+      { title: 'Multi-CaaS', key: 'multicaas', items: [
         w.ccaas > 0 ? sliderRow('multiCaaSArpuRatio', 'Bundled CC price vs. standalone', 0.15, 0.75, 0.01, x => (x*100).toFixed(0)+'% of standalone', 'Native suites (Zoom CX, RingCX, 8x8 XCaaS) price contact-centre seats well below dedicated CCaaS platforms (Genesys, NICE, Five9) to win volume. Calibrated base case: 40%. Raise it if bundled pricing rises as vendors close the feature gap; lower it if the discount war deepens.') : '',
         w.ccaas > 0 ? sliderRow('multiCaaSPace', 'Convergence speed', 0, 2, 0.05, x => x.toFixed(2)+'\u00d7', 'How fast contact-centre buyers move onto bundled Multi-CaaS platforms instead of standalone CCaaS, against the calibrated seat-band forecast (0-50 / 50-300 / 300+ seats, weighted by each band\u2019s share of CCaaS revenue). 1.0\u00d7 is the base case reaching ~37.5% of cloud CC revenue by 2030. 0\u00d7 freezes convergence at today\u2019s level; 2\u00d7 roughly doubles the pace toward each band\u2019s endpoint.') : ''
       ].filter(Boolean) },
-      { title: 'CPaaS', open: false, items: [
+      { title: 'CPaaS', key: 'cpaas', items: [
         w.cpaas > 0 ? sliderRow('cpaasMult', 'Ceiling vs today\u2019s spend', 1.5, 3, 0.1, x => x.toFixed(1)+'×', 'How much bigger CPaaS could get if every business messaged programmatically.') : ''
       ].filter(Boolean) },
-      { title: 'Your position', open: true, items: [
+      { title: 'Your position', key: 'position', items: [
         sliderRow('winRate', 'Win rate', 0.02, 0.3, 0.01, x => (x*100).toFixed(0)+'%', 'The share you win of the contestable pool.')
       ] },
-      { title: 'Competitive concentration', open: false, items: [
+      { title: 'Competitive concentration', key: 'competition', items: [
         w.ucaas > 0 ? sliderRow('somHeldUcaas', 'UCaaS top-5 held', 0.20, 0.90, 0.01, x => (x*100).toFixed(0)+'%', 'Share of this market held by the top 5 vendors. Our own secondary research into publicly reported 2025 vendor revenue puts this in the high-50s \u2014 lower than it might look, since the next tier of challengers still holds meaningful share.') : '',
         w.ucop > 0 ? sliderRow('somHeldUcop', 'UC on-prem top-5 held', 0.20, 0.95, 0.01, x => (x*100).toFixed(0)+'%', 'On-premises UC is a small, shrinking, and highly concentrated field \u2014 our secondary research points to one vendor alone holding close to half of global revenue.') : '',
         w.ccaas > 0 ? sliderRow('somHeldCcaas', 'CCaaS top-5 held', 0.20, 0.90, 0.01, x => (x*100).toFixed(0)+'%', 'Share of this market held by the top 5 vendors, per our own secondary research into publicly reported 2025 vendor revenue.') : '',
@@ -947,7 +948,7 @@
         </div>
         <div style="font-size:10.5px;color:var(--c-dim);line-height:1.4">${v.dep.note}${state.sizeSegment!=='all' ? ' Segment split is Modelled-Directional \u2014 see Methodology.' : ''}</div>
       </div>
-      ${groups.map(g => `<details ${g.open ? 'open' : ''} style="display:flex;flex-direction:column">
+      ${groups.map(g => `<details data-group="${g.key}" ${state.openGroups[g.key] ? 'open' : ''} style="display:flex;flex-direction:column">
         <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--c-trust-lift);font-weight:600;border-bottom:1px solid var(--c-rule);padding-bottom:7px;margin-bottom:12px">
           <span>${g.title}</span><span class="detailsChevron" style="font-size:10px;color:var(--c-dim)">\u25be</span>
         </summary>
@@ -982,6 +983,7 @@
     document.querySelectorAll('[data-aimode]').forEach(el => el.onclick = () => setState({ aiMode: el.dataset.aimode }));
     document.querySelectorAll('[data-lever]').forEach(el => el.oninput = () => setState({ [el.dataset.lever]: parseFloat(el.value) }));
     document.querySelectorAll('[data-levermonthly]').forEach(el => el.oninput = () => setState({ [el.dataset.levermonthly]: parseFloat(el.value) * 12 }));
+    document.querySelectorAll('details[data-group]').forEach(el => el.ontoggle = () => { state.openGroups = { ...state.openGroups, [el.dataset.group]: el.open }; });
     const themeBtn = document.getElementById('themeBtn');
     if (themeBtn) themeBtn.onclick = () => setState({ theme: state.theme === 'light' ? 'dark' : 'light' });
     const resetBtn = document.getElementById('resetBtn');
