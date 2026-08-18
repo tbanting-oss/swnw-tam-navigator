@@ -107,7 +107,8 @@
   const PLAYER_COLORS = [C.purple, C.indigo, 'var(--c-p3)', 'var(--c-p4)', 'var(--c-p5)'];
   const DEFAULTS_BASE = { ucArpu: 240, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, winRate: 0.10,
     tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
-    aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200 };
+    aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
+    multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0 };
   const AI = { priceIn: 1.00, priceOut: 4.00, cacheHit: 0.60, outRatio: 0.125, containment: 0.75,
     voicePerMin: 0.015, voiceDecl: 0.15, humanCost: 5.00, agentArpu: 2500 };
   // Per-tier SAM weights, matching Control Panel's 'SAM weight - Tier N' rows.
@@ -370,22 +371,24 @@
     { name: '50-300 seats', weight: 0.30, conv: [0.200, 0.240, 0.320, 0.440, 0.510, 0.550] },
     { name: '300+ seats',   weight: 0.55, conv: [0.050, 0.070, 0.090, 0.110, 0.130, 0.150] },
   ];
-  // Weighted revenue-convergence share by year index (2025..2030) —
-  // sum of band.weight * band.conv[i]. Precomputed for direct lookup;
-  // recompute below so the table above stays the single source of truth.
-  const MULTICAAS_CONV_BY_YEAR = [0,1,2,3,4,5].map(i =>
-    MULTICAAS_BANDS.reduce((sum, b) => sum + b.weight * b.conv[i], 0));
-  // Multi-CaaS blended CC pricing runs well below standalone CCaaS list
-  // pricing ($30-80/mo Multi-CaaS vs $110-200+/mo standalone) — modelled
-  // as a flat ratio applied to the user's own ccArpu lever so scenario
-  // testing still works. 0.40 sits inside the researched range; not a
-  // precise measurement.
-  const MULTICAAS_ARPU_RATIO = 0.40;
+  // Weighted revenue-convergence share by year, with the pace scaler applied
+  // per band: scales how far each band moves from its 2025 starting point
+  // toward its 2030 endpoint (1.0 = calibrated base case; >1 = faster;
+  // <1 = slower/stalled), clamped to [0,1] so it can't invert or exceed 100%.
+  function multiCaaSConvByYear() {
+    const pace = state.multiCaaSPace;
+    return [0,1,2,3,4,5].map(i => MULTICAAS_BANDS.reduce((sum, b) => {
+      const base = b.conv[0], target = b.conv[i];
+      const scaled = Math.max(0, Math.min(1, base + (target - base) * pace));
+      return sum + b.weight * scaled;
+    }, 0));
+  }
 
   function run(scenarioName) {
     const s = SCEN[scenarioName], st = state;
     const seats0 = SEATS0(), agents0 = AGENTS0() * st.agentScale;
     const years = [2025, 2026, 2027, 2028, 2029, 2030];
+    const multiCaaSConv = multiCaaSConvByYear();
     const rows = years.map((year, i) => {
       const t = i / 5;
       const ucShare = UC_SHARE0() + (s.ucEnd - UC_SHARE0()) * t;
@@ -399,15 +402,15 @@
       const capture = 0.75 - 0.20 * t;
       const ucaas = seats * ucShare * st.ucArpu / 1000;
       const ucop = seats * (1 - ucShare) * st.opArpu / 1000;
-      const multiCaaSShare = MULTICAAS_CONV_BY_YEAR[i];
+      const multiCaaSShare = multiCaaSConv[i];
       // Split cloud CC revenue into standalone CCaaS and bundled Multi-CaaS,
       // by agent share converged rather than by blending one ARPU — this
       // keeps both as real, additive line items instead of a single number
       // with an invisible discount baked in. Sum is identical to a single
-      // blended-ARPU calculation; see MULTICAAS_ARPU_RATIO above.
+      // blended-ARPU calculation; ratio is now the multiCaaSArpuRatio lever.
       const ccAgentsCloud = agents * ccShare;
       const ccaas = ccAgentsCloud * (1 - multiCaaSShare) * st.ccArpu * dFactor * outcome / 1000;
-      const multicaas = ccAgentsCloud * multiCaaSShare * st.ccArpu * MULTICAAS_ARPU_RATIO * dFactor * outcome / 1000;
+      const multicaas = ccAgentsCloud * multiCaaSShare * st.ccArpu * st.multiCaaSArpuRatio * dFactor * outcome / 1000;
       const ccop = agents * (1 - ccShare) * st.ccOpArpu * dFactor / 1000;
       const cpaas = CPAAS0() * Math.pow(1 + s.cpG, i) * uplift;
       const aiBase = aiGross(agents, defl).gross;
@@ -892,6 +895,10 @@
         w.ccaas > 0 ? sliderMonthly('ccArpu', 'Cloud agent', 75, 210, 0.5, 'Price per agent per month for a cloud contact-centre seat.') : '',
         w.ccop > 0 ? sliderRow('ccOpArpu', 'On-prem agent, per year', 150, 400, 10, x => '$'+x, 'Support revenue per legacy on-premises agent seat.') : '',
         sliderRow('agentScale', 'Human agent-count scaler', 0.7, 1.3, 0.05, x => x.toFixed(2)+'×', 'One dial for the world\u2019s HUMAN contact-centre agents.')
+      ].filter(Boolean) },
+      { title: 'Multi-CaaS', items: [
+        w.ccaas > 0 ? sliderRow('multiCaaSArpuRatio', 'Bundled CC price vs. standalone', 0.15, 0.75, 0.01, x => (x*100).toFixed(0)+'% of standalone', 'Native suites (Zoom CX, RingCX, 8x8 XCaaS) price contact-centre seats well below dedicated CCaaS platforms (Genesys, NICE, Five9) to win volume. Calibrated base case: 40%. Raise it if bundled pricing rises as vendors close the feature gap; lower it if the discount war deepens.') : '',
+        w.ccaas > 0 ? sliderRow('multiCaaSPace', 'Convergence speed', 0, 2, 0.05, x => x.toFixed(2)+'\u00d7', 'How fast contact-centre buyers move onto bundled Multi-CaaS platforms instead of standalone CCaaS, against the calibrated seat-band forecast (0-50 / 50-300 / 300+ seats, weighted by each band\u2019s share of CCaaS revenue). 1.0\u00d7 is the base case reaching ~37.5% of cloud CC revenue by 2030. 0\u00d7 freezes convergence at today\u2019s level; 2\u00d7 roughly doubles the pace toward each band\u2019s endpoint.') : ''
       ].filter(Boolean) },
       { title: 'CPaaS', items: [
         w.cpaas > 0 ? sliderRow('cpaasMult', 'Ceiling vs today\u2019s spend', 1.5, 3, 0.1, x => x.toFixed(1)+'×', 'How much bigger CPaaS could get if every business messaged programmatically.') : ''
