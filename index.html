@@ -104,11 +104,50 @@
   };
   const GRID_DECL = [0.20, 0.30, 0.40, 0.50, 0.60];
   const GRID_GROW = [0, 0.20, 0.40, 0.60, 0.80];
+  // ============================================================
+  // SIZE SEGMENTS — Modelled-Directional, reporting/analysis only
+  // ------------------------------------------------------------
+  // Reconciled bottom-up against real per-country business counts
+  // (557.7M SMB / 2.39M Mid-Market / 107.3K Enterprise, matching
+  // IDC's 1-99 / 100-999 / 1,000+ definitions already used in the
+  // TAM Baseline). ucShare reconciles to SEATS0 (211.87M); ccShare
+  // reconciles to AGENTS0 (16.0M) — two independently-derived splits,
+  // not one formula, since UC seats are broadly distributed while CC
+  // agents concentrate in an active minority (see Methodology tab).
+  // cpaas/ai/devices have no independently-calibrated size split —
+  // ucShare is used as the best-available business-size proxy for
+  // cpaas/devices; ccShare is used for ai/leak since AI-CX volume is
+  // driven by deflected agent volume, not seat count. Flagged plainly
+  // in the UI, not presented as equally precise to ucShare/ccShare.
+  const SIZE_SEGMENTS = {
+    all: { name: 'All segments', ucShare: 1, ccShare: 1 },
+    smb: { name: 'SMB (1-99 employees)', ucShare: 0.933, ccShare: 0.567 },
+    mid: { name: 'Mid-Market (100-999)', ucShare: 0.048, ccShare: 0.228 },
+    ent: { name: 'Enterprise (1,000+)',  ucShare: 0.019, ccShare: 0.205 },
+  };
+  function applySizeSegment(row, seg) {
+    if (seg === 'all') return row;
+    const s = SIZE_SEGMENTS[seg];
+    const seats = row.seats * s.ucShare, agents = row.agents * s.ccShare;
+    const ucaas = row.ucaas * s.ucShare, ucop = row.ucop * s.ucShare;
+    const ccaas = row.ccaas * s.ccShare, ccop = row.ccop * s.ccShare, multicaas = row.multicaas * s.ccShare;
+    const cpaas = row.cpaas * s.ucShare, devices = row.devices * s.ucShare;
+    const ai = row.ai * s.ccShare, leak = row.leak * s.ccShare;
+    return { ...row, seats, agents, ucaas, ucop, ccaas, ccop, multicaas, cpaas, devices, ai, leak,
+      software: ucaas + ucop + ccaas + ccop + cpaas + multicaas,
+      cloud: ucaas + ccaas + cpaas + multicaas, onprem: ucop + ccop,
+      total: ucaas + ucop + ccaas + ccop + cpaas + multicaas + ai + devices };
+  }
+  function applySizeSegmentToRun(runResult, seg) {
+    if (seg === 'all') return runResult;
+    const rows = runResult.rows.map(r => applySizeSegment(r, seg));
+    return { rows, first: rows[0], last: rows[5] };
+  }
   const PLAYER_COLORS = [C.purple, C.indigo, 'var(--c-p3)', 'var(--c-p4)', 'var(--c-p5)'];
   const DEFAULTS_BASE = { ucArpu: 240, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, winRate: 0.10,
     tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
     aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
-    multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0 };
+    multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all' };
   const AI = { priceIn: 1.00, priceOut: 4.00, cacheHit: 0.60, outRatio: 0.125, containment: 0.75,
     voicePerMin: 0.015, voiceDecl: 0.15, humanCost: 5.00, agentArpu: 2500 };
   // Per-tier SAM weights, matching Control Panel's 'SAM weight - Tier N' rows.
@@ -447,15 +486,18 @@
   // ============================================================
   function build() {
     const st = state, tab = st.tab, scen = st.scenario;
-    const act = run(scen), f = act.first, l = act.last;
-    const alt = { Conservative: run('Conservative'), Base: run('Base'), Bull: run('Bull') };
+    const act = applySizeSegmentToRun(run(scen), st.sizeSegment), f = act.first, l = act.last;
+    const alt = { Conservative: applySizeSegmentToRun(run('Conservative'), st.sizeSegment),
+                  Base: applySizeSegmentToRun(run('Base'), st.sizeSegment),
+                  Bull: applySizeSegmentToRun(run('Bull'), st.sizeSegment) };
     const maxScen = Math.max(alt.Conservative.last.total, alt.Base.last.total, alt.Bull.last.total);
     const dep = DEPLOY[st.deploy] || DEPLOY.hybrid;
     const w = dep.w;
     const scoped = (row) => row.ucaas * w.ucaas + row.ucop * w.ucop + row.ccaas * w.ccaas + row.ccop * w.ccop + row.cpaas * w.cpaas + row.multicaas * w.multicaas;
+    const segMult = st.sizeSegment === 'all' ? 1 : SIZE_SEGMENTS[st.sizeSegment].ucShare;
     const tam = st.deploy === 'onprem'
       ? f.seats * st.opArpu / 1000 + f.agents * st.ccOpArpu / 1000
-      : f.seats * st.ucArpu / 1000 + f.agents * st.ccArpu / 1000 + CPAAS0() * st.cpaasMult
+      : f.seats * st.ucArpu / 1000 + f.agents * st.ccArpu / 1000 + CPAAS0() * st.cpaasMult * segMult
         + (w.ucop ? f.seats * (1 - UC_SHARE0()) * st.opArpu / 1000 + f.agents * (1 - CC_SHARE0()) * st.ccOpArpu / 1000 : 0);
     const sam = tam * SAM_WEIGHT();
     const addressableNow = scoped(f), addressable2030 = scoped(l);
@@ -886,6 +928,7 @@
   function railHTML(v) {
     const w = v.dep.w;
     const deployBtn = (key, label) => `<button data-deploy="${key}" style="flex:1;background:transparent;border:1px solid ${state.deploy===key?'var(--c-trust)':'var(--c-border)'};color:${state.deploy===key?'var(--c-trust-lift)':'var(--c-muted)'};font-size:12px;padding:8px 6px;border-radius:8px;cursor:pointer">${label}</button>`;
+    const segBtn = (key, label) => `<button data-sizeseg="${key}" style="flex:1;background:transparent;border:1px solid ${state.sizeSegment===key?'var(--c-trust)':'var(--c-border)'};color:${state.sizeSegment===key?'var(--c-trust-lift)':'var(--c-muted)'};font-size:11.5px;padding:7px 4px;border-radius:8px;cursor:pointer">${label}</button>`;
     let groups = [
       { title: 'Unified comms', items: [
         w.ucaas > 0 ? sliderMonthly('ucArpu', 'Cloud seat', 12, 34, 0.5, 'List-style price per user per month for cloud phone and collaboration.') : '',
@@ -925,6 +968,11 @@
         <div style="display:flex;gap:5px">${deployBtn('cloud','Cloud')}${deployBtn('hybrid','Hybrid')}${deployBtn('onprem','On-prem')}</div>
         <div style="font-size:11px;color:var(--c-dim);line-height:1.45">${v.dep.note}</div>
       </div>
+      <div style="display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--c-rule);padding-bottom:16px">
+        <div style="font-size:12.5px;font-weight:500">Focus on a segment?</div>
+        <div style="display:flex;gap:5px">${segBtn('all','All')}${segBtn('smb','SMB')}${segBtn('mid','Mid')}${segBtn('ent','Ent.')}</div>
+        <div style="font-size:11px;color:var(--c-dim);line-height:1.45">${state.sizeSegment==='all' ? 'Every figure below is the full global market.' : 'Bottom-up size split (1-99 / 100-999 / 1,000+ employees, matching IDC\u2019s definitions), reconciled to the real global seat and agent totals. Modelled-Directional \u2014 not independently benchmarked per segment; see Methodology.'}</div>
+      </div>
       ${groups.map(g => `<div style="display:flex;flex-direction:column;gap:14px">
         <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--c-trust-lift);font-weight:600;border-bottom:1px solid var(--c-rule);padding-bottom:7px">${g.title}</div>
         ${g.items.join('')}
@@ -954,6 +1002,7 @@
     document.querySelectorAll('[data-tab]').forEach(el => el.onclick = () => setState({ tab: el.dataset.tab }));
     document.querySelectorAll('[data-scen]').forEach(el => el.onclick = () => setState({ scenario: el.dataset.scen }));
     document.querySelectorAll('[data-deploy]').forEach(el => el.onclick = () => setState({ deploy: el.dataset.deploy }));
+    document.querySelectorAll('[data-sizeseg]').forEach(el => el.onclick = () => setState({ sizeSegment: el.dataset.sizeseg }));
     document.querySelectorAll('[data-aimode]').forEach(el => el.onclick = () => setState({ aiMode: el.dataset.aimode }));
     document.querySelectorAll('[data-lever]').forEach(el => el.oninput = () => setState({ [el.dataset.lever]: parseFloat(el.value) }));
     document.querySelectorAll('[data-levermonthly]').forEach(el => el.oninput = () => setState({ [el.dataset.levermonthly]: parseFloat(el.value) * 12 }));
