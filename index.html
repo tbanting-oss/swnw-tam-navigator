@@ -94,13 +94,6 @@
     { key: 'ccop', name: 'CC on-premises', held: 0.69, contest: 0.30 },
     { key: 'cpaas', name: 'CPaaS', held: 0.68, contest: 0.15 }
   ];
-  const LANDSCAPE_BASE = [
-    { product: 'UCaaS', players: [['Microsoft', 0.25], ['Cisco', 0.17], ['Zoom', 0.11], ['RingCentral', 0.09], ['8x8', 0.04], ['Other', 0.34]] },
-    { product: 'UC on-premises', players: [['Cisco', 0.28], ['Avaya', 0.18], ['Mitel', 0.12], ['NEC', 0.08], ['ALE', 0.06], ['Other', 0.28]] },
-    { product: 'CCaaS', players: [['NiCE', 0.22], ['Genesys', 0.20], ['Five9', 0.13], ['Amazon Connect', 0.10], ['Talkdesk', 0.06], ['Other', 0.29]] },
-    { product: 'CC on-premises', players: [['Avaya', 0.34], ['Genesys', 0.12], ['Cisco', 0.11], ['Alvaria', 0.07], ['Enghouse', 0.05], ['Other', 0.31]] },
-    { product: 'CPaaS', players: [['Twilio', 0.28], ['Sinch', 0.12], ['Vonage', 0.12], ['Infobip', 0.10], ['Bandwidth', 0.06], ['Other', 0.32]] }
-  ];
   const DEPLOY = {
     cloud:  { label: 'Cloud', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 0, ccop: 0, multicaas: 1 }, note: 'Cloud lines only. On-premises support revenue is out of scope.' },
     hybrid: { label: 'Hybrid', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 1, ccop: 1, multicaas: 1 }, note: 'Cloud and on-premises both in scope, including migration of your own installed base.' },
@@ -147,7 +140,6 @@
     const rows = runResult.rows.map(r => applySizeSegment(r, seg));
     return { rows, first: rows[0], last: rows[5] };
   }
-  const PLAYER_COLORS = [C.purple, C.indigo, 'var(--c-p3)', 'var(--c-p4)', 'var(--c-p5)'];
   const DEFAULTS_BASE = { ucArpu: 240, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, winRate: 0.10,
     tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
     aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
@@ -290,21 +282,6 @@
           held: numVal(r[somTable.colIdx['Top-5 held']]) / 100, contest: numVal(r[somTable.colIdx['Incumbent contestability']]) / 100
         })).filter(r => !isNaN(r.held) && !isNaN(r.contest));
       }
-      const landTable = findTable(sc, ['Product', '#1 Leader', 'Share', '#2', 'Share', '#3']);
-      if (landTable) {
-        // Fixed shape: Product, then 5 (name, share) pairs, then a bare Other share, then Total.
-        out.landscape = landTable.dataRows.filter(r => r[0]).map(r => {
-          const players = [];
-          for (let k = 0; k < 5; k++) {
-            const idx = 1 + k * 2;
-            const name = r[idx] && r[idx].trim(), share = numVal(r[idx + 1]);
-            if (name && !isNaN(share)) players.push([name, share / 100]);
-          }
-          const otherShare = numVal(r[11]);
-          if (!isNaN(otherShare)) players.push(['Other', otherShare / 100]);
-          return { product: r[0].trim(), players };
-        }).filter(p => p.players.length > 0);
-      }
     } catch (e) { console.warn('Live fetch failed: SOM & Competitive', e); }
     try {
       const rt = await fetchTab('Readiness Tier');
@@ -341,7 +318,6 @@
   function ROOM_SIZES() { return LIVE.roomSizes && LIVE.roomSizes.length === 4 ? LIVE.roomSizes.map(s => ({ ctrl: 0.5, ctrlAsp: 800, ...s })) : ROOM_SIZES_BASE; }
   function ECOSYSTEMS() { return LIVE.ecosystems && LIVE.ecosystems.length >= 4 ? LIVE.ecosystems : ECOSYSTEMS_BASE; }
   function SOM_DEF() { return LIVE.somDef && LIVE.somDef.length === 5 ? LIVE.somDef : SOM_DEF_BASE; }
-  function LANDSCAPE() { return LIVE.landscape && LIVE.landscape.length >= 5 ? LIVE.landscape : LANDSCAPE_BASE; }
   function DEFAULTS() { return { ...DEFAULTS_BASE, ...(LIVE.demandDefaults || {}) }; }
   function SEATS0() { return LIVE.seats0Adoption || BASE.SEATS0; }
   function AGENTS0() { return BASE.AGENTS0; }
@@ -847,23 +823,6 @@
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(s.y2030,2)}</td></tr>`).join('')}
         </tbody>
       </table>
-    </section>
-    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
-      <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">Leaders by product</h2>
-      <div style="display:flex;flex-direction:column;gap:16px">
-      ${LANDSCAPE().map(l => `
-        <div>
-          <div style="display:grid;grid-template-columns:minmax(92px,150px) minmax(0,1fr);gap:16px;align-items:center">
-            <div style="font-size:13.5px;font-weight:600">${l.product}</div>
-            <div style="display:flex;height:26px;border-radius:4px;overflow:hidden;background:var(--c-bg)">
-              ${l.players.map(([name, share], i) => `<div style="width:${share*100}%;background:${name==='Other'?'var(--c-edge-tint)':PLAYER_COLORS[i]};display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;font-size:11px;font-weight:500;color:${name==='Other'?C.teal:'var(--c-text)'};border-right:1px solid var(--c-panel)" title="${name} ${pct(share,0)}">${share>=0.08?pct(share,0):''}</div>`).join('')}
-            </div>
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:7px">
-          ${l.players.map(([name, share], i) => `<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--c-muted);white-space:nowrap"><div style="width:8px;height:8px;border-radius:2px;background:${name==='Other'?'var(--c-edge-tint)':PLAYER_COLORS[i]}"></div>${name} ${pct(share,0)}</div>`).join('')}
-          </div>
-        </div>`).join('')}
-      </div>
     </section>`;
   }
 
