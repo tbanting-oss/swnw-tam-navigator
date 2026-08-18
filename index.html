@@ -349,6 +349,39 @@
     const voiceCost = st.voiceShare * st.aht * AI.voicePerMin * Math.pow(1 - AI.voiceDecl, i);
     return { tokIn, tokOut, tokenCost, voiceCost, cost: tokenCost + voiceCost };
   }
+  // ============================================================
+  // MULTI-CAAS CONVERGENCE — Modelled-Directional
+  // ------------------------------------------------------------
+  // A growing share of CC agents sit on native, bundled Multi-CaaS
+  // platforms (Zoom Contact Center, RingCX, 8x8 XCaaS) rather than
+  // standalone CCaaS (Genesys, NICE, Five9). This is NOT a seat
+  // double-count — UC seats and CC agents remain distinct pools.
+  // It is ARPU compression: agents on a converged platform pay
+  // Multi-CaaS-tier pricing instead of full standalone CCaaS pricing.
+  //
+  // Band weights (share of 2025 global CCaaS revenue) and per-band
+  // convergence trajectories, reconciled to a weighted 2030 revenue-
+  // convergence endpoint of 37.5%. Two hard anchors: Genesys Cloud CX
+  // ~$2,000/mo minimum (~27 seats on CX1); Five9's 50-concurrent-seat
+  // contractual floor. Everything else here is reasoned inference,
+  // not independently sourced — do not present as benchmarked.
+  const MULTICAAS_BANDS = [
+    { name: '0-50 seats',   weight: 0.15, conv: [0.400, 0.490, 0.580, 0.670, 0.760, 0.850] },
+    { name: '50-300 seats', weight: 0.30, conv: [0.200, 0.240, 0.320, 0.440, 0.510, 0.550] },
+    { name: '300+ seats',   weight: 0.55, conv: [0.050, 0.070, 0.090, 0.110, 0.130, 0.150] },
+  ];
+  // Weighted revenue-convergence share by year index (2025..2030) —
+  // sum of band.weight * band.conv[i]. Precomputed for direct lookup;
+  // recompute below so the table above stays the single source of truth.
+  const MULTICAAS_CONV_BY_YEAR = [0,1,2,3,4,5].map(i =>
+    MULTICAAS_BANDS.reduce((sum, b) => sum + b.weight * b.conv[i], 0));
+  // Multi-CaaS blended CC pricing runs well below standalone CCaaS list
+  // pricing ($30-80/mo Multi-CaaS vs $110-200+/mo standalone) — modelled
+  // as a flat ratio applied to the user's own ccArpu lever so scenario
+  // testing still works. 0.40 sits inside the researched range; not a
+  // precise measurement.
+  const MULTICAAS_ARPU_RATIO = 0.40;
+
   function run(scenarioName) {
     const s = SCEN[scenarioName], st = state;
     const seats0 = SEATS0(), agents0 = AGENTS0() * st.agentScale;
@@ -366,13 +399,18 @@
       const capture = 0.75 - 0.20 * t;
       const ucaas = seats * ucShare * st.ucArpu / 1000;
       const ucop = seats * (1 - ucShare) * st.opArpu / 1000;
-      const ccaas = agents * ccShare * st.ccArpu * dFactor * outcome / 1000;
+      const multiCaaSShare = MULTICAAS_CONV_BY_YEAR[i];
+      const ccArpuBlended = st.ccArpu * (1 - multiCaaSShare * (1 - MULTICAAS_ARPU_RATIO));
+      const ccaasFullPrice = agents * ccShare * st.ccArpu * dFactor * outcome / 1000;
+      const ccaas = agents * ccShare * ccArpuBlended * dFactor * outcome / 1000;
+      const ccaasErosion = ccaasFullPrice - ccaas;
       const ccop = agents * (1 - ccShare) * st.ccOpArpu * dFactor / 1000;
       const cpaas = CPAAS0() * Math.pow(1 + s.cpG, i) * uplift;
       const aiBase = aiGross(agents, defl).gross;
       const ai = aiBase * capture, leak = aiBase * (1 - capture);
       const devices = DEV0() * Math.pow(1 + s.devG, i);
       return { year, seats, agents, ucShare, ccShare, ucaas, ucop, ccaas, ccop, cpaas, ai, leak, devices,
+        multiCaaSShare, ccaasFullPrice, ccaasErosion,
         software: ucaas + ucop + ccaas + ccop + cpaas, cloud: ucaas + ccaas + cpaas, onprem: ucop + ccop,
         total: ucaas + ucop + ccaas + ccop + cpaas + ai + devices };
     });
@@ -719,7 +757,6 @@
   }
 
   function competeHTML(v) {
-    const convShare2030 = 0.62;
     return `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px">
       <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.teal};border-radius:10px;padding:16px 18px">
@@ -733,9 +770,9 @@
         <div style="font-size:12.5px;color:var(--c-muted)">At an unchanged win rate</div>
       </div>
       <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.indigo};border-radius:10px;padding:16px 18px">
-        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Converged MultiCaaS 2030</div>
-        <div class="tnum" style="font-size:30px;font-weight:600">${fb((v.l.ucaas + v.l.ccaas) * convShare2030, 0)}</div>
-        <div style="font-size:12.5px;color:var(--c-muted)">Single-platform UC + CC, not additive</div>
+        <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Multi-CaaS erosion 2030</div>
+        <div class="tnum" style="font-size:30px;font-weight:600">-${fb(v.l.ccaasErosion, 1)}</div>
+        <div style="font-size:12.5px;color:var(--c-muted)">${pct(v.l.multiCaaSShare, 0)} of CC revenue on bundled Multi-CaaS pricing, already netted out of CCaaS above</div>
       </div>
     </div>
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
