@@ -607,6 +607,7 @@
             <td class="tnum" style="padding:9px 0 9px 18px;text-align:right;color:${C.teal}">${spct(cagr(v.f.total, v.l.total))}</td></tr>
           </tbody>
         </table>
+        <div style="font-size:11.5px;color:var(--c-dim);margin-top:12px">CCaaS is net of Multi-CaaS erosion (${fb(v.l.ccaasErosion,1)} by 2030 — see Forecast 2025–2030 for detail).</div>
       </section>
       <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
         <h2 style="margin:0 0 18px;font-size:17px;font-weight:600">2030 total by scenario</h2>
@@ -669,9 +670,12 @@
         <tr style="border-top:1px solid var(--c-rule);color:var(--c-muted)">
           <td style="padding:8px 0">CRM leakage (memo, out of TAM)</td>${v.act.rows.map(r => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right">${r.leak.toFixed(1)}</td>`).join('')}
           <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:var(--c-down)">${spct(cagr(v.f.leak, v.l.leak))}</td></tr>
+        <tr style="border-top:1px solid var(--c-rule);color:var(--c-muted)">
+          <td style="padding:8px 0">Multi-CaaS erosion (memo, already netted from CCaaS above)</td>${v.act.rows.map(r => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right">${r.ccaasErosion.toFixed(1)}</td>`).join('')}
+          <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:var(--c-down)">${spct(cagr(v.f.ccaasErosion, v.l.ccaasErosion))}</td></tr>
         </tbody>
       </table>
-      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">AI deflection removes paid agent seats from both cloud and on-premises contact-centre revenue; the deflected volume reappears as AI-CX spend, of which a rising share leaks to CRM and orchestration vendors outside this TAM.</div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">AI deflection removes paid agent seats from both cloud and on-premises contact-centre revenue; the deflected volume reappears as AI-CX spend, of which a rising share leaks to CRM and orchestration vendors outside this TAM. CCaaS revenue above is reduced by ARPU compression as a rising share of CC agents move to bundled Multi-CaaS platforms rather than standalone CCaaS — the Multi-CaaS erosion line is the memo of that reduction, not additional spend.</div>
     </section>`;
   }
 
