@@ -92,10 +92,21 @@
   // (avg of each tier's real-world range) feeds the blended constant
   // used there. Live-sheet fetch contract updated to expect 3 rows
   // (was 4) -- see ROOM_SIZES() and the ingest code below.
+  // enabled (video-enablement rate): previously 5%/12%/25% by tier,
+  // sitting in this file unchanged and unchecked since before this
+  // whole rebuild -- never touched even while every other field here
+  // was rebuilt. Checked this pass: two independent sources converge
+  // on ~15% of all meeting rooms being video-enabled, one directly
+  // attributing the figure to Cisco. That's a real, aggregate,
+  // sourced number (Confidence: Modelled-Calibrated) -- but only as a
+  // blend across all room sizes, not broken out by tier. Rather than
+  // invent a new per-tier skew to hit that aggregate (which would just
+  // be a different unfounded guess replacing the old one), applied
+  // uniformly across all three tiers instead of guessing a shape.
   const ROOM_SIZES_BASE = [
-    { name: 'Huddle / Small (2–6)', share: 0.64137, avgSqFt: 130, enabled: 0.05, addr: 0.50, price: 2500, ctrl: 0.55, ctrlAsp: 800 },
-    { name: 'Medium (6–16)', share: 0.26237, avgSqFt: 275, enabled: 0.12, addr: 0.60, price: 6000, ctrl: 0.9, ctrlAsp: 950 },
-    { name: 'Large / Boardroom (12–30+)', share: 0.09624, avgSqFt: 575, enabled: 0.25, addr: 0.70, price: 15000, ctrl: 0.95, ctrlAsp: 1100 }
+    { name: 'Huddle / Small (2–6)', share: 0.64137, avgSqFt: 130, enabled: 0.15, addr: 0.50, price: 2500, ctrl: 0.55, ctrlAsp: 800 },
+    { name: 'Medium (6–16)', share: 0.26237, avgSqFt: 275, enabled: 0.15, addr: 0.60, price: 6000, ctrl: 0.9, ctrlAsp: 950 },
+    { name: 'Large / Boardroom (12–30+)', share: 0.09624, avgSqFt: 575, enabled: 0.15, addr: 0.70, price: 15000, ctrl: 0.95, ctrlAsp: 1100 }
   ];
   // Blended avg sqft/room across the mix above -- derived, not a fresh
   // assumption: 0.64137x130 + 0.26237x275 + 0.09624x575. Kept as a fixed
@@ -674,6 +685,11 @@
       return { ...s, roomsM: r, grabsM: grabs, tamB: grabs * s.price / 1000, ctrlB: grabs * s.ctrl * s.ctrlAsp / 1000 };
     });
     const grabsTotal = sizes.reduce((a, s) => a + s.grabsM, 0);
+    // Live-computed, not a hardcoded label -- weighted by each tier's
+    // actual room count, so this stays accurate if the per-tier enabled
+    // rate ever diverges from uniform again (e.g. via a future live-sheet
+    // override with real per-tier data).
+    const avgEnabled = sizes.reduce((a, s) => a + s.roomsM * s.enabled, 0) / sizes.reduce((a, s) => a + s.roomsM, 0);
     const deviceTamTotal = sizes.reduce((a, s) => a + s.tamB, 0);
     const ctrlTotal = sizes.reduce((a, s) => a + s.ctrlB, 0);
     const maxSizeTam = Math.max(...sizes.map(s => s.tamB));
@@ -721,7 +737,7 @@
     }));
 
     return { st, tab, scen, act, f, l, alt, maxScen, dep, w, tam, sam, addressableNow, addressable2030, prodDefs, cagrs, maxAbsCagr,
-      regions, maxRegion, maxGrabs, roomsTotal, sizes, grabsTotal, deviceTamTotal, ctrlTotal, maxSizeTam, impliedEmployeesPerRoom, equippedSpendB, refreshRevenueB,
+      regions, maxRegion, maxGrabs, roomsTotal, sizes, grabsTotal, deviceTamTotal, ctrlTotal, maxSizeTam, impliedEmployeesPerRoom, equippedSpendB, refreshRevenueB, avgEnabled,
       somRows, somNow, som30, maxSom, ai, aiFirst, aiLast, aiAgentRev30, aiResRev30, aiWorkerRev30, maxModeRev, gridRows };
   }
 
@@ -934,7 +950,7 @@
       <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.purple};border-radius:10px;padding:16px 18px">
         <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Total meeting rooms</div>
         <div class="tnum" style="font-size:30px;font-weight:600">${v.roomsTotal.toFixed(1)}M</div>
-        <div style="font-size:12.5px;color:var(--c-muted)">Under 10% video-enabled</div>
+        <div style="font-size:12.5px;color:var(--c-muted)">${pct(v.avgEnabled,0)} video-enabled</div>
       </div>
       <div style="background:var(--c-panel);border:1px solid var(--c-border);border-top:2px solid ${C.teal};border-radius:10px;padding:16px 18px">
         <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Up for grabs</div>
@@ -970,6 +986,7 @@
       </table>
       <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Room count and mix rebuilt from real estate industry data (office density, meeting-room share of floor space) plus real employee-per-room benchmarks by room size -- see Methodology §10. Confidence: Modelled-Calibrated. The huddle/small tier now sits ~5% above the one external room-count benchmark available for that category (itself dated 2017, predating that market's documented ~50%/yr growth through 2022) -- the right direction for a 2025/26 figure, an improvement on an earlier pass of this rebuild, though still not independently confirmed.</div>
       <div style="font-size:12px;color:var(--c-dim);margin-top:8px">Controller TAM: per-tier price ($800/$950/$1,100) checked against real retail pricing for named devices in this category (Logitech Tap, Crestron scheduling panels -- real prices found in the $880-$1,010 range) and found plausible -- Confidence: Modelled-Calibrated. Per-tier attach rate (55%/90%/95% of rooms getting a dedicated controller) has no quantitative source found anywhere -- Confidence: Modelled-Directional, unchanged from before. No vendor-level breakdown is shown for controllers, deliberately -- real per-vendor share for this category wasn't found any more than it was for the main hardware above.</div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:8px">Video-enablement rate (the "${pct(v.avgEnabled,0)} video-enabled" figure above): two independent sources converge on ~15% of all meeting rooms being video-enabled, one directly attributing the figure to Cisco -- Confidence: Modelled-Calibrated as an aggregate. Applied uniformly across all three tiers rather than guessing a per-size split, since no source was found breaking this down by room size specifically.</div>
     </section>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;margin-top:22px">
       <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
