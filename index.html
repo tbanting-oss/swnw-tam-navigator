@@ -75,18 +75,34 @@
     { name: 'Central America and Caribbean', cloud: 0.6112811186, op: 0.2230791386, pace: 1.0, persist: 1.0, grabs: 0.3532668434 }
   ];
   // share values below are room-COUNT shares (used downstream as
-  // roomsTotal x share = tier room count), derived from the floor-area
-  // methodology in Methodology §10, not independently set -- see that
-  // section for the floor-area shares and avg-sqft-per-room this was
-  // computed from. Kept as a plain "share" field, not floor-area share
-  // directly, so the live-sheet fetch contract for this table (see
-  // LIVE.roomSizes below) is unaffected by this rebuild.
+  // roomsTotal x share = tier room count). Rebuilt again in this pass:
+  // Focus/Personal dropped entirely -- those are personal webcams, not
+  // room-installed device TAM, and including them was diluting the real
+  // number. The three remaining tiers' relative MIX (not the total room
+  // count) is now cross-validated against real employee-per-room ratios
+  // (huddle 1/20-25, medium 1/50-60, large 1/150+, checked against an
+  // independent "1 room per 10-20 employees" blanket benchmark and a
+  // real, sensor-verified finding that 80% of meetings happen in
+  // rooms designed for six or fewer people) -- see Methodology §10.
+  // Applying that employee-ratio DIRECTLY to our global office-worker
+  // population produces an implausibly small total (checked: below a
+  // single stale 2017 benchmark for one tier alone), so it is used
+  // here only to set the MIX; the TOTAL still comes from the
+  // floor-area chain below, which cross-checks better. sqft-per-tier
+  // (avg of each tier's real-world range) feeds the blended constant
+  // used there. Live-sheet fetch contract updated to expect 3 rows
+  // (was 4) -- see ROOM_SIZES() and the ingest code below.
   const ROOM_SIZES_BASE = [
-    { name: 'Focus / Personal (1–2)', share: 0.358017, enabled: 0.08, addr: 0.45, price: 1200, ctrl: 0.2, ctrlAsp: 500 },
-    { name: 'Huddle / Small (2–6)', share: 0.385557, enabled: 0.05, addr: 0.50, price: 2500, ctrl: 0.55, ctrlAsp: 800 },
-    { name: 'Medium (6–16)', share: 0.192778, enabled: 0.12, addr: 0.60, price: 6000, ctrl: 0.9, ctrlAsp: 950 },
-    { name: 'Large / Boardroom (12–30+)', share: 0.063647, enabled: 0.25, addr: 0.70, price: 15000, ctrl: 0.95, ctrlAsp: 1100 }
+    { name: 'Huddle / Small (2–6)', share: 0.64137, avgSqFt: 130, enabled: 0.05, addr: 0.50, price: 2500, ctrl: 0.55, ctrlAsp: 800 },
+    { name: 'Medium (6–16)', share: 0.26237, avgSqFt: 275, enabled: 0.12, addr: 0.60, price: 6000, ctrl: 0.9, ctrlAsp: 950 },
+    { name: 'Large / Boardroom (12–30+)', share: 0.09624, avgSqFt: 575, enabled: 0.25, addr: 0.70, price: 15000, ctrl: 0.95, ctrlAsp: 1100 }
   ];
+  // Blended avg sqft/room across the mix above -- derived, not a fresh
+  // assumption: 0.64137x130 + 0.26237x275 + 0.09624x575. Kept as a fixed
+  // constant here rather than recomputed live from ROOM_SIZES() so a
+  // live-sheet override of the mix doesn't silently drift the total's
+  // basis without a matching methodology update.
+  const BLENDED_AVG_SQFT_PER_ROOM = 210.8679;
   const ECOSYSTEMS_BASE = [
     { name: 'Microsoft Teams Rooms — Android', share: 0.33, price: 3500, color: C.indigo },
     { name: 'Microsoft Teams Rooms — Windows', share: 0.22, price: 6000, color: C.purple },
@@ -152,7 +168,8 @@
     aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
     multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all',
     somHeldUcaas: 0.57, somHeldUcop: 0.80, somHeldCcaas: 0.68, somHeldCcop: 0.72, somHeldCpaas: 0.45,
-    openGroups: { unifiedcomms: true, contactcentre: true, multicaas: false, cpaas: false, position: true, competition: false, aiimpact: false } };
+    sqFtPerPerson: 154, meetingShare: 0.24, rtoIntensity: 1.0, refreshCycleYears: 6,
+    openGroups: { unifiedcomms: true, contactcentre: true, multicaas: false, cpaas: false, position: true, competition: false, aiimpact: false, meetingrooms: false } };
   const AI = { priceIn: 1.00, priceOut: 4.00, cacheHit: 0.60, outRatio: 0.125, containment: 0.75,
     voicePerMin: 0.015, voiceDecl: 0.15, humanCost: 5.00, agentArpu: 2500 };
   // Per-tier SAM weights, matching Control Panel's 'SAM weight - Tier N' rows.
@@ -324,7 +341,7 @@
   let liveStatus = 'loading'; // 'loading' | 'live' | 'fallback'
 
   function REGIONS() { return LIVE.regionsForecast && LIVE.regionsForecast.length === 10 ? LIVE.regionsForecast : REGIONS_BASE; }
-  function ROOM_SIZES() { return LIVE.roomSizes && LIVE.roomSizes.length === 4 ? LIVE.roomSizes.map(s => ({ ctrl: 0.5, ctrlAsp: 800, ...s })) : ROOM_SIZES_BASE; }
+  function ROOM_SIZES() { return LIVE.roomSizes && LIVE.roomSizes.length === 3 ? LIVE.roomSizes.map(s => ({ ctrl: 0.5, ctrlAsp: 800, ...s })) : ROOM_SIZES_BASE; }
   function ECOSYSTEMS() { return LIVE.ecosystems && LIVE.ecosystems.length >= 4 ? LIVE.ecosystems : ECOSYSTEMS_BASE; }
   function SOM_DEF() { return LIVE.somDef && LIVE.somDef.length === 5 ? LIVE.somDef : SOM_DEF_BASE; }
   function DEFAULTS() { return { ...DEFAULTS_BASE, ...(LIVE.demandDefaults || {}) }; }
@@ -536,49 +553,74 @@
     // ============================================================
     // MEETING ROOMS — Modelled-Calibrated (see Methodology §10)
     // ------------------------------------------------------------
-    // Rebuilt August 2026 from three uncited constants to a bottom-up
-    // build from real estate industry data, cross-checked at each step
-    // against at least two independent sources:
-    //   officeWorkers = SEATS0/0.70 (existing model ratio, unchanged)
-    //   officeSqFt    = officeWorkers x 154 sqft/person -- midpoint of
-    //                   two independent density figures (real estate
+    // Rebuilt again in this pass, on top of the August 2026 rebuild:
+    //   officeWorkers = SEATS0/0.70 x rtoIntensity -- rtoIntensity is a
+    //                   new user-facing lever (Master Levers > Meeting
+    //                   rooms), default 1.0 (today's level), asserting
+    //                   nothing on its own. Real evidence this variable
+    //                   is genuinely volatile right now: a primary 2026
+    //                   occupancy report calls the swing in 3-4 day
+    //                   attendance (36%->55% in one year) the largest
+    //                   single-year shift in three years of that
+    //                   benchmark; a separate staffing-firm dataset
+    //                   showed fully-in-office job postings jump from
+    //                   65% to 87% in two quarters. This lever lets a
+    //                   user stress-test that swing rather than have it
+    //                   silently baked into a fixed assumption.
+    //   officeSqFt    = officeWorkers x sqFtPerPerson (slider, default
+    //                   154 -- midpoint of two independent density
+    //                   figures agreeing within 5%: real estate
     //                   research ~158 sqft/person; a current US
     //                   government space-planning standard, 150
-    //                   sqft/person) agreeing within 5% of each other.
-    //   meetingSqFt   = officeSqFt x 24% -- current reading of a
-    //                   documented, rising trend (from ~14% in 2021),
-    //                   driven by hybrid work converting individual
-    //                   desk space into shared/bookable space. We do
-    //                   NOT separately discount for remote/hybrid/
-    //                   on-site mix: both this share and the density
-    //                   figure above are observed from real, currently
-    //                   occupied buildings and already reflect today's
-    //                   actual hybrid-driven allocation (incl. desk-
-    //                   sharing ratios now commonly 1.0-1.5 people per
-    //                   seat) -- workstyle mix is the mechanism behind
-    //                   these figures, not a missing input on top of
-    //                   them; applying a second discount would count
-    //                   the same effect twice.
-    // Checked against the best external evidence found: the model's
-    // huddle/small tier lands ~7% below the one named-analyst room-
-    // count figure available, which is itself dated 2017/2018 (7-8
-    // years stale, predating that market's own documented ~50%/yr
-    // growth through 2022 alone) -- so a modern figure sitting below
-    // it is a real, acknowledged shortfall, not a clean reconciliation.
-    // Room-size-per-tier and floor-area-share assumptions are
-    // triangulated across multiple independent space-planning sources,
-    // not from a single named benchmark -- the residual gap most
-    // likely lives here or in the officeWorkers ratio above, which
-    // predates this rebuild and remains itself unverified.
-    const officeWorkers = SEATS0() / 0.70;
-    const officeSqFtB = officeWorkers * 154 / 1000;
-    const meetingSqFtB = officeSqFtB * 0.24;
-    // Blended average sqft/room, derived once from the tier-level room-size
-    // and floor-area-share assumptions documented in Methodology §10 (not a
-    // fresh assumption -- fixed so roomsTotal stays exactly proportional to
-    // meetingSqFtB, and recalculates correctly if SEATS0 ever changes via
-    // the live sheet, rather than being frozen at today's snapshot value).
-    const roomsTotal = meetingSqFtB * 1000 / 143.2069;
+    //                   sqft/person).
+    //   meetingSqFt   = officeSqFt x meetingShare (slider, default 24%
+    //                   -- current reading of a documented, rising
+    //                   trend from ~14% in 2021, driven by hybrid work
+    //                   converting individual desk space into shared
+    //                   space). Not separately discounted for remote/
+    //                   hybrid/on-site mix -- both this share and the
+    //                   density figure above are observed from real,
+    //                   currently occupied buildings and already
+    //                   reflect today's actual hybrid-driven
+    //                   allocation; a second discount would count the
+    //                   same effect twice. (rtoIntensity above is a
+    //                   different thing: a user-testable scenario
+    //                   lever, not a baked-in empirical correction.)
+    //   roomsTotal    = meetingSqFt / blended avg sqft-per-room. This
+    //                   stays the PRIMARY driver of the total, not a
+    //                   direct employees-per-room ratio: checked
+    //                   applying real, sourced employee-per-room
+    //                   benchmarks (huddle 1/20-25, medium 1/50-60,
+    //                   large 1/150+; independently cross-validated in
+    //                   combination against a "1 room per 10-20
+    //                   employees" blanket benchmark) directly to our
+    //                   global officeWorkers figure, and it produces an
+    //                   implausibly small total (below a single stale
+    //                   2017 benchmark for one tier alone) -- those
+    //                   ratios were almost certainly calibrated against
+    //                   single-building headcounts, not a global
+    //                   abstraction, so they are NOT used as the total-
+    //                   count driver here.
+    // What the employee-ratio research IS used for: the relative MIX
+    // between the three tiers (see ROOM_SIZES_BASE above), which
+    // doesn't have this scaling problem -- and a displayed cross-check
+    // below (implied employees/room at the current total) so the
+    // residual gap against real-world benchmarks stays visible rather
+    // than hidden.
+    // Checked against the best external evidence found: with this
+    // mix, the huddle/small tier now lands ABOVE the one named-analyst
+    // room-count figure available for that category (itself dated
+    // 2017/2018, predating that market's documented ~50%/yr growth
+    // through 2022) -- the right direction, an improvement on the
+    // previous pass, though still not independently confirmed.
+    const officeWorkers = SEATS0() / 0.70 * st.rtoIntensity;
+    const officeSqFtB = officeWorkers * st.sqFtPerPerson / 1000;
+    const meetingSqFtB = officeSqFtB * st.meetingShare;
+    const roomsTotal = meetingSqFtB * 1000 / BLENDED_AVG_SQFT_PER_ROOM;
+    // Displayed cross-check only, not a driver: real-world employee-
+    // per-room benchmarks run 10-20; showing where our own total
+    // implies we sit against that range keeps the residual gap honest.
+    const impliedEmployeesPerRoom = officeWorkers / roomsTotal;
     const sizes = ROOM_SIZES().map(s => {
       const r = roomsTotal * s.share, grabs = r * (1 - s.enabled) * s.addr;
       return { ...s, roomsM: r, grabsM: grabs, tamB: grabs * s.price / 1000, ctrlB: grabs * s.ctrl * s.ctrlAsp / 1000 };
@@ -587,6 +629,22 @@
     const deviceTamTotal = sizes.reduce((a, s) => a + s.tamB, 0);
     const ctrlTotal = sizes.reduce((a, s) => a + s.ctrlB, 0);
     const maxSizeTam = Math.max(...sizes.map(s => s.tamB));
+    // Refresh-cycle decomposition -- resolves what was previously flagged
+    // as an "$11B vs $137B disagreement" (see the footnote on this tab) by
+    // making the relationship a real mechanism instead of a one-off
+    // observation. Already-equipped rooms replace their hardware on a
+    // cycle rather than all at once; refreshCycleYears (slider, default 6,
+    // the midpoint of a commonly-cited 5-7 year mid-range refresh-cycle
+    // figure -- itself a generic market-report source, weaker than the
+    // CBRE/JLL/GSA tier this rebuild otherwise holds to, labelled
+    // Modelled-Directional accordingly) sets how fast that cycle turns.
+    // equippedSpend is the one-time value of the ALREADY-enabled install
+    // base (mirrors deviceTamTotal's math, which covers only the
+    // UNenabled/addressable pool); dividing by the cycle length gives an
+    // implied annual refresh-driven revenue figure, shown alongside (not
+    // replacing) DEV0's own annual trajectory as a cross-check.
+    const equippedSpendB = sizes.reduce((a, s) => a + s.roomsM * s.enabled * s.price / 1000, 0);
+    const refreshRevenueB = equippedSpendB / st.refreshCycleYears;
 
     const SOM_HELD_KEY = { ucaas: 'somHeldUcaas', ucop: 'somHeldUcop', ccaas: 'somHeldCcaas', ccop: 'somHeldCcop', cpaas: 'somHeldCpaas' };
     const somRows = SOM_DEF().filter(d => w[d.key] > 0).map(d => {
@@ -615,7 +673,7 @@
     }));
 
     return { st, tab, scen, act, f, l, alt, maxScen, dep, w, tam, sam, addressableNow, addressable2030, prodDefs, cagrs, maxAbsCagr,
-      regions, maxRegion, maxGrabs, roomsTotal, sizes, grabsTotal, deviceTamTotal, ctrlTotal, maxSizeTam,
+      regions, maxRegion, maxGrabs, roomsTotal, sizes, grabsTotal, deviceTamTotal, ctrlTotal, maxSizeTam, impliedEmployeesPerRoom, equippedSpendB, refreshRevenueB,
       somRows, somNow, som30, maxSom, ai, aiFirst, aiLast, aiAgentRev30, aiResRev30, aiWorkerRev30, maxModeRev, gridRows };
   }
 
@@ -632,7 +690,7 @@
       <div style="display:flex;flex-direction:column;gap:6px">
         <div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--c-trust-lift)">Global business TAM baseline</div>
         <h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em">UC · CX · CPaaS market model</h1>
-        <div style="font-size:14px;color:var(--c-muted);max-width:620px">Live scenario model over 224 countries, 560M businesses and ~78M meeting rooms. Every figure below recalculates from the levers on the right.</div>
+        <div style="font-size:14px;color:var(--c-muted);max-width:620px">Live scenario model over 224 countries, 560M businesses and ~53M meeting rooms. Every figure below recalculates from the levers on the right.</div>
         <div style="font-size:11.5px;margin-top:2px">${liveDot}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-end">
@@ -841,7 +899,8 @@
         <div style="font-size:12.5px;color:var(--c-muted)">One-time hardware, plus ${fb(v.ctrlTotal,0)} controllers</div>
       </div>
     </div>
-    <div style="font-size:12px;color:var(--c-dim);margin-top:10px">This is a one-time total: what equipping every currently-unequipped, addressable room would cost right now, not an annual figure. Our own modelled annual device revenue is ${fb(v.f.devices,0)} (2025) -- at that pace, with growth, this whole addressable pool would be captured in roughly 8 years, which sits close to typical enterprise AV hardware refresh cycles (commonly cited around 5-7 years for mid-range systems, longer for higher-end boardroom installs). These two figures were previously shown with no explanation of the relationship between them and had been flagged internally as disagreeing -- they don't; they measure different things on purpose.</div>
+    <div style="font-size:12px;color:var(--c-dim);margin-top:10px">This is a one-time total: what equipping every currently-unequipped, addressable room would cost right now, not an annual figure. Separately, already-equipped rooms replace their hardware on a cycle -- at the current ${v.st.refreshCycleYears.toFixed(1)}-year cycle, that implies ${fb(v.refreshRevenueB,1)}/yr in refresh-driven device revenue alone (adjustable via the refresh-cycle lever in Master Levers). Our own modelled total annual device revenue is ${fb(v.f.devices,0)} (2025), which also includes new/greenfield installs, not just refresh. These figures were previously shown with no explanation of how they relate and had been flagged internally as disagreeing -- they don't; they measure different things on purpose.</div>
+    <div style="font-size:12px;color:var(--c-dim);margin-top:8px">Cross-check: at this total, our model implies ${v.impliedEmployeesPerRoom.toFixed(1)} employees per meeting room. Real-world benchmarks (an independent blanket rule of thumb, cross-checked against employee-per-room ratios by room size) suggest roughly 10-20. This is a real, acknowledged gap, not resolved by this rebuild -- shown here rather than hidden.</div>
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
       <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">By room size</h2>
       <table style="width:100%;min-width:620px;border-collapse:collapse;font-size:13px">
@@ -859,7 +918,7 @@
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(s.tamB,0)}</td></tr>`).join('')}
         </tbody>
       </table>
-      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Room count rebuilt August 2026 from real estate industry data (office density, meeting-room share of floor space) rather than uncited assumptions -- see Methodology §10. Confidence: Modelled-Calibrated, with an acknowledged ~7% shortfall against the one external room-count benchmark available, which is itself dated 2017.</div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Room count and mix rebuilt from real estate industry data (office density, meeting-room share of floor space) plus real employee-per-room benchmarks by room size -- see Methodology §10. Confidence: Modelled-Calibrated. The huddle/small tier now sits ~5% above the one external room-count benchmark available for that category (itself dated 2017, predating that market's documented ~50%/yr growth through 2022) -- the right direction for a 2025/26 figure, an improvement on an earlier pass of this rebuild, though still not independently confirmed.</div>
     </section>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;margin-top:22px">
       <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
@@ -1019,6 +1078,12 @@
       { title: 'AI impact', key: 'aiimpact', items: [
         sliderRow('aiDisplacement', 'AI displaces human agents by 2030', 0, 0.4, 0.01, x => (x*100).toFixed(0)+'%', 'Default 0% -- this is a lever for you to test, not a SWNW forecast. We have not found evidence to support a specific displacement figure, so we make no assumption by default. Drag it to see what a given AI-displacement scenario would mean for human agent count, contact-centre revenue, and the AI-handled-equivalent line in Projection detail. Ramps linearly from 0% in 2025 to your chosen figure by 2030, the same way every other trajectory in this model moves.')
       ] },
+      { title: 'Meeting rooms', key: 'meetingrooms', items: [
+        sliderRow('rtoIntensity', 'In-office intensity (RTO)', 0.7, 1.3, 0.01, x => x.toFixed(2)+'\u00d7', 'Default 1.0x = today\u2019s level, asserting nothing on its own. Real evidence this is volatile right now: one primary occupancy benchmark logged the largest single-year swing in three years of tracking (3-4 day attendance up from 36% to 55%); a separate staffing dataset showed fully-in-office job postings jump from 65% to 87% in two quarters. Scales the office-worker population feeding every meeting-room figure on this tab.'),
+        sliderRow('sqFtPerPerson', 'Office space per worker', 130, 175, 1, x => x.toFixed(0)+' sqft', 'Midpoint of two independent, current sources agreeing within 5%: real estate industry density research (~158 sqft/person) and a current US government space-planning standard (150 sqft/person). Default 154.'),
+        sliderRow('meetingShare', 'Meeting-room share of floor space', 0.14, 0.30, 0.01, x => (x*100).toFixed(0)+'%', 'Current reading of a documented, rising trend (from ~14% in 2021 to ~24% now), driven by hybrid work converting individual desk space into shared space. Default 24%.'),
+        sliderRow('refreshCycleYears', 'Hardware refresh cycle', 4, 9, 0.5, x => x.toFixed(1)+' yrs', 'How often already-equipped rooms replace their video hardware. Midpoint of a commonly-cited 5-7 year range for mid-range systems (a generic market-report figure, weaker sourcing than the other levers here). Drives the refresh-revenue cross-check shown on the Meeting Rooms tab. Default 6 years.')
+      ] },
       { title: 'Multi-CaaS', key: 'multicaas', items: [
         w.ccaas > 0 ? sliderRow('multiCaaSArpuRatio', 'Bundled CC price vs. standalone', 0.15, 0.75, 0.01, x => (x*100).toFixed(0)+'% of standalone', 'Native suites (Zoom CX, RingCX, 8x8 XCaaS) price contact-centre seats well below dedicated CCaaS platforms (Genesys, NICE, Five9) to win volume. Calibrated base case: 40%. Raise it if bundled pricing rises as vendors close the feature gap; lower it if the discount war deepens.') : '',
         w.ccaas > 0 ? sliderRow('multiCaaSPace', 'Convergence speed', 0, 2, 0.05, x => x.toFixed(2)+'\u00d7', 'How fast contact-centre buyers move onto bundled Multi-CaaS platforms instead of standalone CCaaS, against the calibrated seat-band forecast (0-50 / 50-300 / 300+ seats, weighted by each band\u2019s share of CCaaS revenue). 1.0\u00d7 is the base case reaching ~37.5% of cloud CC revenue by 2030. 0\u00d7 freezes convergence at today\u2019s level; 2\u00d7 roughly doubles the pace toward each band\u2019s endpoint.') : ''
@@ -1107,7 +1172,7 @@
   loadLiveModel().then(data => {
     LIVE = data;
     const gotRegions = data.regionsForecast && data.regionsForecast.length === 10;
-    const gotRooms = data.roomSizes && data.roomSizes.length === 4;
+    const gotRooms = data.roomSizes && data.roomSizes.length === 3;
     const gotDemand = data.demandDefaults && Object.keys(data.demandDefaults).length > 0;
     const gotSom = data.somDef && data.somDef.length === 5;
     const gotReadiness = data.readinessTiers && data.readinessTiers.length > 0;
