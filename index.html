@@ -104,56 +104,53 @@
   // basis without a matching methodology update.
   const BLENDED_AVG_SQFT_PER_ROOM = 210.8679;
   // PLATFORMS = which meeting SOFTWARE a room runs. HW_VENDORS (below) =
-  // which physical HARDWARE is installed. These used to be conflated into
-  // one table (one hardware "ecosystem" = one platform), which broke once
-  // we verified that hardware and platform are decoupling: Cisco devices
-  // are now certified to run natively as Microsoft Teams Rooms AND Zoom
-  // Rooms, on top of native Webex -- confirmed directly from Cisco/Webex's
-  // own site and blog, current as of 2026 (MDEP-based Teams certification
-  // on Desk Pro G2/Room Kit Pro G2/Board Pro G3; Zoom Rooms certification
-  // from Sept 2026). The same shift applies to Logitech and Yealink
-  // hardware, both already confirmed running multiple platforms. Split
-  // into two tables so a single hardware sale no longer has to imply a
-  // single platform. No price field here -- device price is a hardware-
-  // vendor property, not a platform one; see HW_VENDORS_BASE for that.
-  // Confidence: Modelled-Directional throughout -- real per-platform
-  // room-share data sits behind the same analyst paywall (Omdia) already
-  // flagged elsewhere in this model; Cisco Webex's inclusion here is a
-  // real, verified product fact, but its specific share % is estimated,
-  // not sourced.
+  // which physical HARDWARE is installed -- kept as two separate tables
+  // since hardware and platform are decoupling (Cisco devices now
+  // certified for Microsoft Teams Rooms AND Zoom Rooms, on top of native
+  // Webex; Barco's ClickShare Hub now Teams-certified too; both verified
+  // directly from the vendors' own sites/press releases).
+  // REBUILT again in this pass, simplified rather than expanded, after
+  // checking a wide net of sources (blogs, news, financial filings,
+  // investor reports, industry events) specifically for room-hardware
+  // platform share: every number found (23%-48% for the same platform,
+  // depending which low-tier "statistics" site you read) was mutually
+  // inconsistent, and the more credible-sounding figures found measure
+  // a different thing entirely (overall UC&C suite revenue, or general
+  // video-conferencing software revenue -- not room-hardware platform
+  // share specifically). No usable anchor exists publicly for this
+  // specific breakdown. Rather than force a percentage table onto that,
+  // this is now a plain, unweighted list: names and the one verified
+  // product fact (multi-platform certification) worth knowing, no
+  // implied ranking. Confidence: not assigned -- there is nothing to
+  // rate here, this is informational only.
   const ECOSYSTEMS_BASE = [
-    { name: 'Microsoft Teams Rooms', share: 0.40, color: C.purple },
-    { name: 'Zoom Rooms', share: 0.20, color: C.teal },
-    { name: 'Cisco Webex', share: 0.15, color: C.indigo },
-    { name: 'BYOD / pass-through', share: 0.17, color: C.grey },
-    { name: 'Google Meet', share: 0.08, color: C.amber }
+    { name: 'Microsoft Teams Rooms', note: 'Widely reported as the leading enterprise platform (bundled into Microsoft 365); no reliable room-hardware-specific share figure found publicly.', color: C.purple },
+    { name: 'Zoom Rooms', note: 'Established, long-standing dedicated room-system platform.', color: C.teal },
+    { name: 'Cisco Webex', note: 'Native platform; Cisco hardware is now ALSO certified for Microsoft Teams Rooms and Zoom Rooms -- verified directly from Cisco/Webex\u2019s own site, current as of 2026.', color: C.indigo },
+    { name: 'BYOD / pass-through', note: 'Room runs whatever the presenter\u2019s own laptop is signed into -- platform-agnostic by design.', color: C.grey },
+    { name: 'Google Meet', note: 'Smaller enterprise room-hardware footprint than the above; no reliable share figure found publicly.', color: C.amber }
   ];
   // HW_VENDORS = which company made the physical device, independent of
-  // which platform(s) it's certified to run. Logitech's 21% is the one
-  // real anchor here -- a named market-research figure (volume share,
-  // H1 2024), single-sourced from a lower-tier report, not independently
-  // corroborated. Everything else is Modelled-Directional, informed by
-  // qualitative vendor-positioning research (Cisco strong in premium/
-  // secure enterprise rooms, Poly/HP mid-to-premium, Yealink budget-
-  // oriented) rather than a verified percentage. Real per-vendor
-  // shipment/revenue share sits behind the same Omdia/Frost Radar
-  // paywalls already flagged elsewhere in this model. Barco (Euronext:
-  // BAR) pulled out of "Other" into its own named row -- real, public,
-  // and its ClickShare Hub achieved Microsoft certification with first
-  // shipments in December 2025 (verified directly from Barco's own FY25
-  // results press release), the same platform-decoupling pattern as
-  // Cisco. Its own disclosed revenue is bundled the same way Jabra/GN's
-  // is: the "Enterprise" segment (~EUR235M FY2025) combines Meeting
-  // Experience with Control Rooms, no clean device-only split given --
-  // so its row here is share-estimated like the others, not backed by
-  // a clean number the way Logitech's is.
+  // which platform(s) it's certified to run. Simplified in this pass to
+  // what's actually defensible: Logitech's 21% is a real, named,
+  // room-hardware-specific volume-share figure (H1 2024) -- single-
+  // sourced from a lower-tier market-research report, not independently
+  // corroborated, so Modelled-Calibrated rather than Sourced, but it IS
+  // a specific figure about this specific market, unlike anything found
+  // for the platform table above. Everything else previously shown here
+  // (Cisco, Poly, Yealink, Barco, "Other" with named residual vendors)
+  // implied a precision across five more rows that the underlying
+  // research doesn't support -- real per-vendor share for this market
+  // remains genuinely paywalled (Omdia, Frost Radar). Rather than keep
+  // that false precision, collapsed to two rows: the one real number,
+  // and an honest "everything else, not broken out" bucket. The vendors
+  // that were named in earlier rows (Cisco, Poly/HP, Yealink, Barco,
+  // Crestron, Neat, Jabra/GN, DTEN, AVer) are still real and worth
+  // tracking qualitatively -- see the By platform notes and Methodology
+  // -- just not presented as if their individual shares were known.
   const HW_VENDORS_BASE = [
     { name: 'Logitech', share: 0.21, price: 3000, color: C.purple },
-    { name: 'Cisco', share: 0.18, price: 5500, color: C.indigo },
-    { name: 'Poly (HP)', share: 0.14, price: 4000, color: C.teal },
-    { name: 'Yealink', share: 0.11, price: 2200, color: C.amber },
-    { name: 'Barco', share: 0.08, price: 3800, color: C.indigoLift },
-    { name: 'Other (Crestron, Neat, Jabra/GN, DTEN, AVer, etc.)', share: 0.28, price: 2800, color: C.grey }
+    { name: 'Rest of market (Cisco, Poly/HP, Yealink, Barco, Crestron, Neat, Jabra/GN, DTEN, AVer, and others)', share: 0.79, price: 3200, color: C.grey }
   ];
   const SOM_DEF_BASE = [
     { key: 'ucaas', name: 'UCaaS', held: 0.57, contest: 0.15 },
@@ -387,8 +384,13 @@
 
   function REGIONS() { return LIVE.regionsForecast && LIVE.regionsForecast.length === 10 ? LIVE.regionsForecast : REGIONS_BASE; }
   function ROOM_SIZES() { return LIVE.roomSizes && LIVE.roomSizes.length === 3 ? LIVE.roomSizes.map(s => ({ ctrl: 0.5, ctrlAsp: 800, ...s })) : ROOM_SIZES_BASE; }
-  function ECOSYSTEMS() { return LIVE.ecosystems && LIVE.ecosystems.length >= 4 ? LIVE.ecosystems : ECOSYSTEMS_BASE; }
-  function HW_VENDORS() { return LIVE.hwVendors && LIVE.hwVendors.length >= 4 ? LIVE.hwVendors : HW_VENDORS_BASE; }
+  // Live-sheet override intentionally disabled for platforms: the sheet's
+  // "Ecosystem" table (if present) was built for the old share/price shape,
+  // which no longer matches this table's note-based structure -- always
+  // use the constants here rather than risk rendering undefined notes from
+  // a stale-shaped sheet fetch.
+  function ECOSYSTEMS() { return ECOSYSTEMS_BASE; }
+  function HW_VENDORS() { return LIVE.hwVendors && LIVE.hwVendors.length >= 2 ? LIVE.hwVendors : HW_VENDORS_BASE; }
   function SOM_DEF() { return LIVE.somDef && LIVE.somDef.length === 5 ? LIVE.somDef : SOM_DEF_BASE; }
   function DEFAULTS() { return { ...DEFAULTS_BASE, ...(LIVE.demandDefaults || {}) }; }
   function SEATS0() { return LIVE.seats0Adoption || BASE.SEATS0; }
@@ -969,29 +971,27 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;margin-top:22px">
       <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
         <h2 style="margin:0 0 6px;font-size:17px;font-weight:600">By platform</h2>
-        <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:14px">Which meeting software the room runs -- independent of who made the hardware. See By hardware vendor for that.</div>
-        <div style="display:flex;flex-direction:column;gap:11px">
-        ${ECOSYSTEMS().map(e => {
-          const rooms = v.grabsTotal * e.share;
-          return `<div style="display:grid;grid-template-columns:minmax(0,1fr) 70px;gap:12px;align-items:center">
-            <div><div style="font-size:13px;font-weight:500">${e.name}</div><div style="height:7px;background:var(--c-bg);border-radius:3px;overflow:hidden;margin-top:5px"><div style="${bar(e.share/0.40, e.color, '7px')}"></div></div></div>
-            <div class="tnum" style="text-align:right;font-size:12.5px;color:var(--c-muted)">${rooms.toFixed(1)}M</div></div>`;
-        }).join('')}
+        <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:14px">Which meeting software the room runs -- independent of who made the hardware. No reliable public source gives room-hardware-specific platform share (every figure checked was inconsistent by 20+ points across sources, or measured something else entirely) -- shown here unranked, for context, not as a sized breakdown.</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+        ${ECOSYSTEMS().map(e => `<div>
+            <div style="font-size:13px;font-weight:500;color:${e.color}">${e.name}</div>
+            <div style="font-size:12px;color:var(--c-dim);margin-top:2px">${e.note}</div>
+          </div>`).join('')}
         </div>
       </section>
       <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
         <h2 style="margin:0 0 6px;font-size:17px;font-weight:600">By hardware vendor</h2>
-        <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:14px">Who made the device -- a single vendor's hardware can run multiple platforms above (e.g. Cisco devices are now certified for both Microsoft Teams Rooms and Zoom Rooms, alongside native Webex).</div>
+        <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:14px">Who made the device -- a single vendor's hardware can run multiple platforms above (e.g. Cisco and Barco devices are now certified for Microsoft Teams Rooms alongside their native platforms).</div>
         <div style="display:flex;flex-direction:column;gap:11px">
         ${HW_VENDORS().map(e => {
           const rooms = v.grabsTotal * e.share;
           return `<div style="display:grid;grid-template-columns:minmax(0,1fr) 70px 70px;gap:12px;align-items:center">
-            <div><div style="font-size:13px;font-weight:500">${e.name}</div><div style="height:7px;background:var(--c-bg);border-radius:3px;overflow:hidden;margin-top:5px"><div style="${bar(e.share/0.34, e.color, '7px')}"></div></div></div>
+            <div><div style="font-size:13px;font-weight:500">${e.name}</div><div style="height:7px;background:var(--c-bg);border-radius:3px;overflow:hidden;margin-top:5px"><div style="${bar(e.share/0.79, e.color, '7px')}"></div></div></div>
             <div class="tnum" style="text-align:right;font-size:12.5px;color:var(--c-muted)">${rooms.toFixed(1)}M</div>
             <div class="tnum" style="text-align:right;font-size:12.5px">${fb(rooms * e.price / 1000, 0)}</div></div>`;
         }).join('')}
         </div>
-        <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Logitech's 21% is a real, named volume-share figure (H1 2024) -- single-sourced, not independently corroborated. Every other share here is Modelled-Directional, informed by qualitative vendor positioning rather than a verified percentage; real per-vendor share data sits behind the same analyst paywalls (Omdia, Frost Radar) flagged elsewhere in this model.</div>
+        <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Logitech's 21% is a real, room-hardware-specific volume-share figure (H1 2024) -- single-sourced from a lower-tier report, not independently corroborated, but a specific number about this specific market (Confidence: Modelled-Calibrated). "Rest of market" is a deliberate, honest bucket, not a modelled estimate -- real per-vendor share for the rest of this market is genuinely paywalled (Omdia, Frost Radar); collapsing it into one unranked bucket avoids implying a precision that isn't there.</div>
       </section>
     </div>`;
   }
