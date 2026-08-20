@@ -74,11 +74,18 @@
     { name: 'Australia and Oceania', cloud: 0.6349383631, op: 0.2248735766, pace: 1.05, persist: 1.1, grabs: 0.3867804239 },
     { name: 'Central America and Caribbean', cloud: 0.6112811186, op: 0.2230791386, pace: 1.0, persist: 1.0, grabs: 0.3532668434 }
   ];
+  // share values below are room-COUNT shares (used downstream as
+  // roomsTotal x share = tier room count), derived from the floor-area
+  // methodology in Methodology §10, not independently set -- see that
+  // section for the floor-area shares and avg-sqft-per-room this was
+  // computed from. Kept as a plain "share" field, not floor-area share
+  // directly, so the live-sheet fetch contract for this table (see
+  // LIVE.roomSizes below) is unaffected by this rebuild.
   const ROOM_SIZES_BASE = [
-    { name: 'Focus / Personal (1–2)', share: 0.10, enabled: 0.08, addr: 0.45, price: 1200, ctrl: 0.2, ctrlAsp: 500 },
-    { name: 'Huddle / Small (2–6)', share: 0.48, enabled: 0.05, addr: 0.50, price: 2500, ctrl: 0.55, ctrlAsp: 800 },
-    { name: 'Medium (6–16)', share: 0.30, enabled: 0.12, addr: 0.60, price: 6000, ctrl: 0.9, ctrlAsp: 950 },
-    { name: 'Large / Boardroom (12–30+)', share: 0.12, enabled: 0.25, addr: 0.70, price: 15000, ctrl: 0.95, ctrlAsp: 1100 }
+    { name: 'Focus / Personal (1–2)', share: 0.358017, enabled: 0.08, addr: 0.45, price: 1200, ctrl: 0.2, ctrlAsp: 500 },
+    { name: 'Huddle / Small (2–6)', share: 0.385557, enabled: 0.05, addr: 0.50, price: 2500, ctrl: 0.55, ctrlAsp: 800 },
+    { name: 'Medium (6–16)', share: 0.192778, enabled: 0.12, addr: 0.60, price: 6000, ctrl: 0.9, ctrlAsp: 950 },
+    { name: 'Large / Boardroom (12–30+)', share: 0.063647, enabled: 0.25, addr: 0.70, price: 15000, ctrl: 0.95, ctrlAsp: 1100 }
   ];
   const ECOSYSTEMS_BASE = [
     { name: 'Microsoft Teams Rooms — Android', share: 0.33, price: 3500, color: C.indigo },
@@ -526,8 +533,52 @@
     }).sort((a, b) => b.t30 - a.t30);
     const maxRegion = regions[0].t30, maxGrabs = Math.max(...REG.map(r => r.grabs));
 
-    const rooms = { smb: 334.647666 * 0.06, mid: 323.107515 * 0.13, ent: 187.77675 * 0.15 };
-    const roomsTotal = rooms.smb + rooms.mid + rooms.ent;
+    // ============================================================
+    // MEETING ROOMS — Modelled-Calibrated (see Methodology §10)
+    // ------------------------------------------------------------
+    // Rebuilt August 2026 from three uncited constants to a bottom-up
+    // build from real estate industry data, cross-checked at each step
+    // against at least two independent sources:
+    //   officeWorkers = SEATS0/0.70 (existing model ratio, unchanged)
+    //   officeSqFt    = officeWorkers x 154 sqft/person -- midpoint of
+    //                   two independent density figures (real estate
+    //                   research ~158 sqft/person; a current US
+    //                   government space-planning standard, 150
+    //                   sqft/person) agreeing within 5% of each other.
+    //   meetingSqFt   = officeSqFt x 24% -- current reading of a
+    //                   documented, rising trend (from ~14% in 2021),
+    //                   driven by hybrid work converting individual
+    //                   desk space into shared/bookable space. We do
+    //                   NOT separately discount for remote/hybrid/
+    //                   on-site mix: both this share and the density
+    //                   figure above are observed from real, currently
+    //                   occupied buildings and already reflect today's
+    //                   actual hybrid-driven allocation (incl. desk-
+    //                   sharing ratios now commonly 1.0-1.5 people per
+    //                   seat) -- workstyle mix is the mechanism behind
+    //                   these figures, not a missing input on top of
+    //                   them; applying a second discount would count
+    //                   the same effect twice.
+    // Checked against the best external evidence found: the model's
+    // huddle/small tier lands ~7% below the one named-analyst room-
+    // count figure available, which is itself dated 2017/2018 (7-8
+    // years stale, predating that market's own documented ~50%/yr
+    // growth through 2022 alone) -- so a modern figure sitting below
+    // it is a real, acknowledged shortfall, not a clean reconciliation.
+    // Room-size-per-tier and floor-area-share assumptions are
+    // triangulated across multiple independent space-planning sources,
+    // not from a single named benchmark -- the residual gap most
+    // likely lives here or in the officeWorkers ratio above, which
+    // predates this rebuild and remains itself unverified.
+    const officeWorkers = SEATS0() / 0.70;
+    const officeSqFtB = officeWorkers * 154 / 1000;
+    const meetingSqFtB = officeSqFtB * 0.24;
+    // Blended average sqft/room, derived once from the tier-level room-size
+    // and floor-area-share assumptions documented in Methodology §10 (not a
+    // fresh assumption -- fixed so roomsTotal stays exactly proportional to
+    // meetingSqFtB, and recalculates correctly if SEATS0 ever changes via
+    // the live sheet, rather than being frozen at today's snapshot value).
+    const roomsTotal = meetingSqFtB * 1000 / 143.2069;
     const sizes = ROOM_SIZES().map(s => {
       const r = roomsTotal * s.share, grabs = r * (1 - s.enabled) * s.addr;
       return { ...s, roomsM: r, grabsM: grabs, tamB: grabs * s.price / 1000, ctrlB: grabs * s.ctrl * s.ctrlAsp / 1000 };
@@ -581,7 +632,7 @@
       <div style="display:flex;flex-direction:column;gap:6px">
         <div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--c-trust-lift)">Global business TAM baseline</div>
         <h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em">UC · CX · CPaaS market model</h1>
-        <div style="font-size:14px;color:var(--c-muted);max-width:620px">Live scenario model over 224 countries, 560M businesses and ~90M meeting rooms. Every figure below recalculates from the levers on the right.</div>
+        <div style="font-size:14px;color:var(--c-muted);max-width:620px">Live scenario model over 224 countries, 560M businesses and ~78M meeting rooms. Every figure below recalculates from the levers on the right.</div>
         <div style="font-size:11.5px;margin-top:2px">${liveDot}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-end">
@@ -807,6 +858,7 @@
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(s.tamB,0)}</td></tr>`).join('')}
         </tbody>
       </table>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Room count rebuilt August 2026 from real estate industry data (office density, meeting-room share of floor space) rather than uncited assumptions -- see Methodology §10. Confidence: Modelled-Calibrated, with an acknowledged ~7% shortfall against the one external room-count benchmark available, which is itself dated 2017.</div>
     </section>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;margin-top:22px">
       <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
