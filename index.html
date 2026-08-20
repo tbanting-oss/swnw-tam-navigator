@@ -885,15 +885,16 @@
           <th style="text-align:right;padding:0 0 8px 14px">Cost</th><th style="text-align:right;padding:0 0 8px 14px">Price</th>
           <th style="text-align:right;padding:0 0 8px 14px">Margin</th><th style="text-align:right;padding:0 0 8px 14px">Revenue</th></tr></thead>
         <tbody>
-        ${v.ai.map(r => `<tr style="border-top:1px solid var(--c-rule)">
+        ${v.ai.map((r, i) => `<tr style="border-top:1px solid var(--c-rule)">
           <td style="padding:9px 0;font-weight:500">${r.year}</td>
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${r.resolutions.toFixed(1)}</td>
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">$${r.cost.toFixed(3)}</td>
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">$${r.realised.toFixed(2)}</td>
-          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:${r.margin<0.5?'var(--c-down)':C.teal}">${pct(r.margin,0)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:${i > 0 && r.margin < v.ai[i-1].margin ? 'var(--c-down)' : C.teal}" title="${i > 0 && r.margin < v.ai[i-1].margin ? 'Margin fell year-over-year -- worth checking which lever or scenario setting is driving this, since cost normally declines every year by design' : ''}">${pct(r.margin,0)}</td>
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(r.revenue)}</td></tr>`).join('')}
         </tbody>
       </table>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Margin is flagged red only when it falls from the prior year -- not below a fixed threshold. Under this model's cost-decline assumption, margin should rise every year on its own; a red cell means something in the current lever or scenario combination is working against that, worth a closer look.</div>
     </section>`;
   }
 
