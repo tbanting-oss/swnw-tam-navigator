@@ -873,6 +873,25 @@
         }).join('')}
         </div>
       </section>
+      <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
+        <h2 style="margin:0 0 6px;font-size:17px;font-weight:600">Checking the numbers</h2>
+        <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">One named, dated device-vendor disclosure, checked against our modelled annual device market.</div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+            <div style="font-size:13px">Logitech's FY2026 Video Collaboration net sales (GAAP, 10-K)</div>
+            <div class="tnum" style="font-size:15px;font-weight:600">$689M</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-top:1px solid var(--c-rule);padding-top:14px">
+            <div style="font-size:13px">Our modelled annual device revenue (2025)</div>
+            <div class="tnum" style="font-size:15px;font-weight:600">${fb(DEV0(),0)}</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-top:1px solid var(--c-rule);padding-top:14px">
+            <div style="font-size:13px;font-weight:500">Implied share of our modelled market</div>
+            <div class="tnum" style="font-size:15px;font-weight:600;color:${C.teal}">${pct(689/(DEV0()*1000),1)}</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--c-dim);margin-top:16px">This checks one real, disclosed number against our own -- it does not validate our total market size on its own. Logitech holding roughly this share of a market this size is plausible but not confirmed either way; we have not found a reliable, dated, named source for Logitech's actual overall room-hardware market share to compare against. Worth reading alongside the separate, still-open question of why this tab's annual device-revenue figure and the one-time Greenfield device TAM above are not yet reconciled to the same underlying market size.</div>
+      </section>
     </div>`;
   }
 
