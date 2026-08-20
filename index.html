@@ -137,13 +137,23 @@
   // secure enterprise rooms, Poly/HP mid-to-premium, Yealink budget-
   // oriented) rather than a verified percentage. Real per-vendor
   // shipment/revenue share sits behind the same Omdia/Frost Radar
-  // paywalls already flagged elsewhere in this model.
+  // paywalls already flagged elsewhere in this model. Barco (Euronext:
+  // BAR) pulled out of "Other" into its own named row -- real, public,
+  // and its ClickShare Hub achieved Microsoft certification with first
+  // shipments in December 2025 (verified directly from Barco's own FY25
+  // results press release), the same platform-decoupling pattern as
+  // Cisco. Its own disclosed revenue is bundled the same way Jabra/GN's
+  // is: the "Enterprise" segment (~EUR235M FY2025) combines Meeting
+  // Experience with Control Rooms, no clean device-only split given --
+  // so its row here is share-estimated like the others, not backed by
+  // a clean number the way Logitech's is.
   const HW_VENDORS_BASE = [
     { name: 'Logitech', share: 0.21, price: 3000, color: C.purple },
     { name: 'Cisco', share: 0.18, price: 5500, color: C.indigo },
-    { name: 'Poly (HP)', share: 0.15, price: 4000, color: C.teal },
-    { name: 'Yealink', share: 0.12, price: 2200, color: C.amber },
-    { name: 'Other (Crestron, Neat, Jabra/GN, DTEN, Barco, AVer, etc.)', share: 0.34, price: 2800, color: C.grey }
+    { name: 'Poly (HP)', share: 0.14, price: 4000, color: C.teal },
+    { name: 'Yealink', share: 0.11, price: 2200, color: C.amber },
+    { name: 'Barco', share: 0.08, price: 3800, color: C.indigoLift },
+    { name: 'Other (Crestron, Neat, Jabra/GN, DTEN, AVer, etc.)', share: 0.28, price: 2800, color: C.grey }
   ];
   const SOM_DEF_BASE = [
     { key: 'ucaas', name: 'UCaaS', held: 0.57, contest: 0.15 },
