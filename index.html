@@ -951,11 +951,12 @@
     <div style="font-size:12px;color:var(--c-dim);margin-top:8px">Cross-check: at this total, our model implies ${v.impliedEmployeesPerRoom.toFixed(1)} employees per meeting room. Real-world benchmarks (an independent blanket rule of thumb, cross-checked against employee-per-room ratios by room size) suggest roughly 10-20. This is a real, acknowledged gap, not resolved by this rebuild -- shown here rather than hidden.</div>
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
       <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">By room size</h2>
-      <table style="width:100%;min-width:620px;border-collapse:collapse;font-size:13px">
+      <table style="width:100%;min-width:700px;border-collapse:collapse;font-size:13px">
         <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
           <th style="text-align:left;padding:0 0 8px">Room size</th><th style="text-align:right;padding:0 0 8px 14px">Rooms M</th>
           <th style="text-align:right;padding:0 0 8px 14px">Enabled</th><th style="text-align:right;padding:0 0 8px 14px">Grabs M</th>
-          <th style="text-align:right;padding:0 0 8px 14px">$/room</th><th style="text-align:right;padding:0 0 8px 14px">Device TAM</th></tr></thead>
+          <th style="text-align:right;padding:0 0 8px 14px">$/room</th><th style="text-align:right;padding:0 0 8px 14px">Device TAM</th>
+          <th style="text-align:right;padding:0 0 8px 14px">Controller TAM</th></tr></thead>
         <tbody>
         ${v.sizes.map(s => `<tr style="border-top:1px solid var(--c-rule)">
           <td style="padding:9px 0;font-weight:500">${s.name}</td>
@@ -963,10 +964,12 @@
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:var(--c-muted)">${pct(s.enabled,0)}</td>
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:${C.teal}">${s.grabsM.toFixed(1)}</td>
           <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:var(--c-muted)">$${s.price.toLocaleString()}</td>
-          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(s.tamB,0)}</td></tr>`).join('')}
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right">${fb(s.tamB,0)}</td>
+          <td class="tnum" style="padding:9px 0 9px 14px;text-align:right;color:var(--c-dim)">${fb(s.ctrlB,1)}</td></tr>`).join('')}
         </tbody>
       </table>
       <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Room count and mix rebuilt from real estate industry data (office density, meeting-room share of floor space) plus real employee-per-room benchmarks by room size -- see Methodology §10. Confidence: Modelled-Calibrated. The huddle/small tier now sits ~5% above the one external room-count benchmark available for that category (itself dated 2017, predating that market's documented ~50%/yr growth through 2022) -- the right direction for a 2025/26 figure, an improvement on an earlier pass of this rebuild, though still not independently confirmed.</div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:8px">Controller TAM: per-tier price ($800/$950/$1,100) checked against real retail pricing for named devices in this category (Logitech Tap, Crestron scheduling panels -- real prices found in the $880-$1,010 range) and found plausible -- Confidence: Modelled-Calibrated. Per-tier attach rate (55%/90%/95% of rooms getting a dedicated controller) has no quantitative source found anywhere -- Confidence: Modelled-Directional, unchanged from before. No vendor-level breakdown is shown for controllers, deliberately -- real per-vendor share for this category wasn't found any more than it was for the main hardware above.</div>
     </section>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;margin-top:22px">
       <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
