@@ -140,12 +140,12 @@
     const rows = runResult.rows.map(r => applySizeSegment(r, seg));
     return { rows, first: rows[0], last: rows[5] };
   }
-  const DEFAULTS_BASE = { ucArpu: 198, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, winRate: 0.10,
+  const DEFAULTS_BASE = { ucArpu: 198, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, aiDisplacement: 0, winRate: 0.10,
     tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
     aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
     multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all',
     somHeldUcaas: 0.57, somHeldUcop: 0.80, somHeldCcaas: 0.68, somHeldCcop: 0.72, somHeldCpaas: 0.45,
-    openGroups: { unifiedcomms: true, contactcentre: true, multicaas: false, cpaas: false, position: true, competition: false } };
+    openGroups: { unifiedcomms: true, contactcentre: true, multicaas: false, cpaas: false, position: true, competition: false, aiimpact: false } };
   const AI = { priceIn: 1.00, priceOut: 4.00, cacheHit: 0.60, outRatio: 0.125, containment: 0.75,
     voicePerMin: 0.015, voiceDecl: 0.15, humanCost: 5.00, agentArpu: 2500 };
   // Per-tier SAM weights, matching Control Panel's 'SAM weight - Tier N' rows.
@@ -415,7 +415,17 @@
       const ucShare = UC_SHARE0() + (s.ucEnd - UC_SHARE0()) * t;
       const ccShare = CC_SHARE0() + (s.ccEnd - CC_SHARE0()) * t;
       const seats = seats0 * Math.pow(1 + s.ucG, i);
-      const agents = agents0 * Math.pow(1 + s.agG, i);
+      const agentsPreDisplacement = agents0 * Math.pow(1 + s.agG, i);
+      // AI displacement: user-tested scenario, not a SWNW forecast. Default 0%
+      // asserts nothing -- model behaves exactly as it does with the lever
+      // untouched. Ramps linearly from 2025 (0% always) to the 2030 endpoint
+      // set by the lever, same mechanism as every other trajectory in this
+      // model (ucEnd, ccEnd, defl). Applied here, at the earliest point agents
+      // enters the calculation, so revenue, the seat/agent rows, and the
+      // AI-handled-equivalent row all inherit it consistently -- one
+      // intervention point, not a second competing discount mechanic layered
+      // on top of the existing AI-deflection revenue factor below.
+      const agents = agentsPreDisplacement * (1 - st.aiDisplacement * t);
       const defl = DEFL0() + (s.defl - DEFL0()) * t;
       const dFactor = 1 - (defl - DEFL0());
       const outcome = 1 - 0.10 * t;
@@ -434,11 +444,24 @@
       const multicaas = ccAgentsCloud * multiCaaSShare * st.ccArpu * st.multiCaaSArpuRatio * dFactor * outcome / 1000;
       const ccop = agents * (1 - ccShare) * st.ccOpArpu * dFactor / 1000;
       const cpaas = CPAAS0() * Math.pow(1 + s.cpG, i) * uplift;
-      const aiBase = aiGross(agents, defl).gross;
+      const aiG = aiGross(agents, defl);
+      const aiBase = aiG.gross;
       const ai = aiBase * capture, leak = aiBase * (1 - capture);
       const devices = DEV0() * Math.pow(1 + s.devG, i);
+      // Cloud-only seat/agent counts, exposed as their own rows (see Projection
+      // detail) — distinct from the seats/agents totals above, which are
+      // cloud+on-prem combined. deflAgents is the AI-handled agent-equivalent:
+      // contact volume deflected by AI, expressed as how many additional human
+      // agents would have been needed to handle it. Shown alongside the human
+      // agent count, never subtracted from it — this is not a claim that AI
+      // has displaced existing headcount, only that it is absorbing volume
+      // growth. Uses the same defl trajectory already driving AI-CX revenue
+      // above, not a separate assumption.
+      const ucaasSeats = seats * ucShare;
+      const ccaasAgentsCloud = ccAgentsCloud;
+      const deflAgents = aiG.deflAgents;
       return { year, seats, agents, ucShare, ccShare, ucaas, ucop, ccaas, ccop, cpaas, ai, leak, devices,
-        multicaas, multiCaaSShare,
+        multicaas, multiCaaSShare, ucaasSeats, ccaasAgentsCloud, deflAgents,
         software: ucaas + ucop + ccaas + ccop + cpaas + multicaas, cloud: ucaas + ccaas + cpaas + multicaas, onprem: ucop + ccop,
         total: ucaas + ucop + ccaas + ccop + cpaas + multicaas + ai + devices };
     });
@@ -689,12 +712,17 @@
         <tbody>
         ${[
           ['UC seats (M)', v.act.rows.map(r => r.seats.toFixed(0)), spct(cagr(v.f.seats, v.l.seats)), C.teal],
+          ['UCaaS seats (M)', v.act.rows.map(r => r.ucaasSeats.toFixed(0)), spct(cagr(v.f.ucaasSeats, v.l.ucaasSeats)), C.teal],
           ['CC agents (M)', v.act.rows.map(r => r.agents.toFixed(2)), spct(cagr(v.f.agents, v.l.agents)), C.teal],
+          ['CCaaS agents (M)', v.act.rows.map(r => r.ccaasAgentsCloud.toFixed(2)), spct(cagr(v.f.ccaasAgentsCloud, v.l.ccaasAgentsCloud)), C.teal],
           ['UC cloud share', v.act.rows.map(r => pct(r.ucShare, 0)), '—', 'var(--c-dim)'],
           ['CC cloud share', v.act.rows.map(r => pct(r.ccShare, 0)), '—', 'var(--c-dim)']
         ].map(([name, cells, c, color]) => `<tr style="border-top:1px solid var(--c-rule)">
           <td style="padding:8px 0;font-weight:500">${name}</td>${cells.map(x => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-text2)">${x}</td>`).join('')}
           <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:${color}">${c}</td></tr>`).join('')}
+        <tr style="border-top:1px solid var(--c-rule)">
+          <td style="padding:8px 0;font-weight:500;color:${C.lilac}">AI-handled equivalent (M)<span style="font-weight:400;color:var(--c-dim)"> — see note</span></td>${v.act.rows.map(r => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:${C.lilac}">${r.deflAgents.toFixed(2)}</td>`).join('')}
+          <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:${C.lilac}">${spct(cagr(v.f.deflAgents, v.l.deflAgents))}</td></tr>
         ${v.prodDefs.map((p, i) => `<tr style="border-top:1px solid var(--c-rule)">
           <td style="padding:8px 0;font-weight:500">${p.name} ($B)</td>${v.act.rows.map(r => `<td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-text2)">${r[p.key].toFixed(1)}</td>`).join('')}
           <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:${growthColor(v.cagrs[i])}">${spct(v.cagrs[i])}</td></tr>`).join('')}
@@ -706,7 +734,7 @@
           <td class="tnum" style="padding:8px 0 8px 20px;text-align:right;color:var(--c-down)">${spct(cagr(v.f.leak, v.l.leak))}</td></tr>
         </tbody>
       </table>
-      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">AI deflection removes paid agent seats from both cloud and on-premises contact-centre revenue; the deflected volume reappears as AI-CX spend, of which a rising share leaks to CRM and orchestration vendors outside this TAM. Multi-CaaS is bundled UC+CC revenue split out from standalone CCaaS, priced at native-suite rates rather than dedicated-platform rates — see Regions & countries assumptions for the seat-band basis.</div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">UCaaS seats and CCaaS agents are the cloud-only slice of the UC seats/CC agents rows above (seats/agents \u00d7 cloud share) -- the figure most directly comparable to a named vendor's own disclosed cloud seat count. AI-handled equivalent is contact volume deflected by AI, expressed as how many additional human agents that volume would have needed -- it is shown alongside the human agent count, not subtracted from it; this model does not assert that AI has reduced today's agent headcount, only that it is absorbing a growing share of volume growth. AI deflection removes paid agent seats from both cloud and on-premises contact-centre revenue; the deflected volume reappears as AI-CX spend, of which a rising share leaks to CRM and orchestration vendors outside this TAM. Multi-CaaS is bundled UC+CC revenue split out from standalone CCaaS, priced at native-suite rates rather than dedicated-platform rates — see Regions & countries assumptions for the seat-band basis.</div>
     </section>`;
   }
 
@@ -906,6 +934,9 @@
         w.ccop > 0 ? sliderRow('ccOpArpu', 'On-prem agent, per year', 150, 400, 10, x => '$'+x, 'Support revenue per legacy on-premises agent seat.') : '',
         sliderRow('agentScale', 'Human agent-count scaler', 0.7, 1.3, 0.05, x => x.toFixed(2)+'×', 'One dial for the world\u2019s HUMAN contact-centre agents.')
       ].filter(Boolean) },
+      { title: 'AI impact', key: 'aiimpact', items: [
+        sliderRow('aiDisplacement', 'AI displaces human agents by 2030', 0, 0.4, 0.01, x => (x*100).toFixed(0)+'%', 'Default 0% -- this is a lever for you to test, not a SWNW forecast. We have not found evidence to support a specific displacement figure, so we make no assumption by default. Drag it to see what a given AI-displacement scenario would mean for human agent count, contact-centre revenue, and the AI-handled-equivalent line in Projection detail. Ramps linearly from 0% in 2025 to your chosen figure by 2030, the same way every other trajectory in this model moves.')
+      ] },
       { title: 'Multi-CaaS', key: 'multicaas', items: [
         w.ccaas > 0 ? sliderRow('multiCaaSArpuRatio', 'Bundled CC price vs. standalone', 0.15, 0.75, 0.01, x => (x*100).toFixed(0)+'% of standalone', 'Native suites (Zoom CX, RingCX, 8x8 XCaaS) price contact-centre seats well below dedicated CCaaS platforms (Genesys, NICE, Five9) to win volume. Calibrated base case: 40%. Raise it if bundled pricing rises as vendors close the feature gap; lower it if the discount war deepens.') : '',
         w.ccaas > 0 ? sliderRow('multiCaaSPace', 'Convergence speed', 0, 2, 0.05, x => x.toFixed(2)+'\u00d7', 'How fast contact-centre buyers move onto bundled Multi-CaaS platforms instead of standalone CCaaS, against the calibrated seat-band forecast (0-50 / 50-300 / 300+ seats, weighted by each band\u2019s share of CCaaS revenue). 1.0\u00d7 is the base case reaching ~37.5% of cloud CC revenue by 2030. 0\u00d7 freezes convergence at today\u2019s level; 2\u00d7 roughly doubles the pace toward each band\u2019s endpoint.') : ''
