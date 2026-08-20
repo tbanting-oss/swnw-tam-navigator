@@ -52,15 +52,15 @@
   "use strict";
   const C = { purple: 'var(--c-trust)', indigo: 'var(--c-insight)', teal: 'var(--c-edge)', lilac: 'var(--c-trust-soft)', amber: 'var(--c-insight-soft)', grey: 'var(--c-grey)', greyDark: 'var(--c-grey-dark)', indigoLift: 'var(--c-insight-lift)' };
   const SCEN = {
-    Conservative: { ucG: 0.02, agG: 0.01, cpG: 0.12, ucEnd: 0.45, ccEnd: 0.55, defl: 0.25, devG: 0.09, color: 'var(--c-grey-dark)' },
-    Base:         { ucG: 0.03, agG: 0.02, cpG: 0.18, ucEnd: 0.52, ccEnd: 0.62, defl: 0.35, devG: 0.13, color: 'var(--c-trust)' },
-    Bull:         { ucG: 0.04, agG: 0.03, cpG: 0.24, ucEnd: 0.60, ccEnd: 0.70, defl: 0.50, devG: 0.18, color: 'var(--c-edge)' }
+    Conservative: { ucG: 0.02, agG: 0.01, cpG: 0.12, ucEnd: 0.58, ccEnd: 0.55, defl: 0.25, devG: 0.09, color: 'var(--c-grey-dark)' },
+    Base:         { ucG: 0.03, agG: 0.02, cpG: 0.18, ucEnd: 0.63, ccEnd: 0.62, defl: 0.35, devG: 0.13, color: 'var(--c-trust)' },
+    Bull:         { ucG: 0.04, agG: 0.03, cpG: 0.24, ucEnd: 0.70, ccEnd: 0.70, defl: 0.50, devG: 0.18, color: 'var(--c-edge)' }
   };
   // Calibrated baselines — last-known-good anchors. Live fetch overrides what it can find;
   // anything the fetch can't parse falls back to these values, so the dashboard always works.
   const BASE = {
     SEATS0: 211.87, AGENTS0: 16.0039198, CPAAS0: 16.15958855, DEV0: 11,
-    UC_SHARE0: 0.4700, CC_SHARE0: 0.34, DEFL0: 0.12, SAM_WEIGHT: 0.4125625087
+    UC_SHARE0: 0.5760, CC_SHARE0: 0.34, DEFL0: 0.12, SAM_WEIGHT: 0.4125625087
   };
   const REGIONS_BASE = [
     { name: 'East and Southeast Asia', cloud: 37.01345706, op: 14.27425975, pace: 1.15, persist: 1.1, grabs: 22.4702091 },
@@ -140,7 +140,7 @@
     const rows = runResult.rows.map(r => applySizeSegment(r, seg));
     return { rows, first: rows[0], last: rows[5] };
   }
-  const DEFAULTS_BASE = { ucArpu: 240, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, winRate: 0.10,
+  const DEFAULTS_BASE = { ucArpu: 198, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, winRate: 0.10,
     tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
     aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
     multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all',
