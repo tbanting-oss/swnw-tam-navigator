@@ -739,19 +739,24 @@
   }
 
   function regionsHTML(v) {
+    const globalSoftwareCagr = cagr(v.f.cloud + v.f.onprem, v.l.cloud + v.l.onprem);
     return `
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto">
       <h2 style="margin:0 0 18px;font-size:17px;font-weight:600">2030 market by region</h2>
+      <div style="display:grid;grid-template-columns:minmax(104px,210px) minmax(0,1fr) 84px 68px 74px;gap:14px;color:var(--c-dim);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid var(--c-rule);margin-bottom:10px">
+        <div>Region</div><div></div><div style="text-align:right">2030 ($B)</div><div style="text-align:right">CAGR</div><div style="text-align:right">Cloud share</div>
+      </div>
       <div style="display:flex;flex-direction:column;gap:10px">
       ${v.regions.map(r => `
         <div style="display:grid;grid-template-columns:minmax(104px,210px) minmax(0,1fr) 84px 68px 74px;gap:14px;align-items:center">
           <div style="font-size:13.5px;font-weight:500">${r.name}</div>
           <div style="height:22px;background:var(--c-bg);border-radius:4px;overflow:hidden"><div style="${bar(r.t30 / v.maxRegion, C.purple, '22px', '4px')}"></div></div>
           <div class="tnum" style="text-align:right;font-size:14px">${fb(r.t30)}</div>
-          <div class="tnum" style="text-align:right;font-size:13px;color:${growthColor(r.cagr - 0.14)}">${spct(r.cagr)}</div>
+          <div class="tnum" style="text-align:right;font-size:13px;color:${growthColor(r.cagr - globalSoftwareCagr)}" title="Global UC+CC blend: ${spct(globalSoftwareCagr)}. Compared against the same cloud+on-premises scope this region's own figure covers -- not the all-product ecosystem total, which also includes CPaaS, AI-CX, and devices that regions don't carry a line for.">${spct(r.cagr)}</div>
           <div class="tnum" style="text-align:right;font-size:12.5px;color:var(--c-dim)">${pct(r.cloudShare,0)}</div>
         </div>`).join('')}
       </div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">2030 ($B) is UC+CC revenue for that region only, cloud and on-premises combined -- not the region's share of the full ecosystem (CPaaS/AI-CX/devices are global lines, not split by region). CAGR is flagged red only when it falls below the global UC+CC blend shown on hover, so it's comparing like with like. Cloud share is each region's cloud revenue as a percentage of its own UC+CC total.</div>
     </section>
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;overflow-x:auto;margin-top:22px">
       <h2 style="margin:0 0 16px;font-size:17px;font-weight:600">Rooms up for grabs by region</h2>
