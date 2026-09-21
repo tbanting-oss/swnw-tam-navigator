@@ -58,8 +58,19 @@
   };
   // Calibrated baselines — last-known-good anchors. Live fetch overrides what it can find;
   // anything the fetch can't parse falls back to these values, so the dashboard always works.
+  // CPAAS0 updated 21 Sep 2026 (was 16.15958855, the old flat-rate figure
+  // calibrated to Metrigy/IDC/Omdia): the underlying sheet moved to a
+  // bottom-up, ground-up Voice+Authentication model, sourced per country
+  // (World Bank Findex account ownership x population x Twilio/local-
+  // carrier pricing) with zero IDC/Metrigy/Omdia linkage. Only 7 of 224
+  // countries carry real per-country pricing so far (US, UK, Germany,
+  // Japan, India, Indonesia, Nigeria); the rest are still on the legacy
+  // flat rate pending sourcing -- see the sheet's "CPaaS Sourced Inputs
+  // (Voice+Auth)" tab and the project Handoff doc. This value is now
+  // normally overridden live -- see CPAAS0() below -- and used only if
+  // that live fetch fails.
   const BASE = {
-    SEATS0: 211.87, AGENTS0: 16.0039198, CPAAS0: 16.15958855, DEV0: 11,
+    SEATS0: 211.87, AGENTS0: 16.0039198, CPAAS0: 14.009, DEV0: 11,
     UC_SHARE0: 0.5760, CC_SHARE0: 0.34, DEFL0: 0.12, SAM_WEIGHT: 0.4125625087
   };
   const REGIONS_BASE = [
@@ -383,6 +394,26 @@
       if (!isNaN(seats0) && seats0 > 0) out.seats0Adoption = seats0;
       if (!isNaN(ucShare0Adoption) && ucShare0Adoption > 0 && ucShare0Adoption < 1) out.ucShare0Adoption = ucShare0Adoption;
     } catch (e) { console.warn('Live fetch failed: Adoption by Tier', e); }
+    // CPAAS0 -- added 21 Sep 2026. Previously this constant was never
+    // live-fetched at all (unlike SEATS0/UC_SHARE0 above), so it silently
+    // went stale when the sheet's CPaaS methodology changed. Reads the
+    // GLOBAL TOTAL row's CPaaS Mkt ($M) column from the Revenue TAM (USD)
+    // tab directly -- the same figure the sheet itself totals from its
+    // per-country rows, sourced + legacy-flat-rate blended (see BASE.CPAAS0
+    // comment above for what that blend currently consists of).
+    try {
+      const rev = await fetchTab('Revenue TAM (USD)');
+      const revTable = findTable(rev, ['Country', 'CPaaS Mkt']);
+      if (revTable) {
+        const globalRow = revTable.dataRows.find(r => r[0] && r[0].trim().toUpperCase() === 'GLOBAL TOTAL');
+        if (globalRow) {
+          const raw = globalRow[revTable.colIdx['CPaaS Mkt']];
+          const cleaned = String(raw || '').replace(/[$,\s]/g, '').replace(/M$/i, '');
+          const v = parseFloat(cleaned);
+          if (!isNaN(v) && v > 0) out.cpaas0 = v / 1000; // sheet is $M, this model works in $B
+        }
+      }
+    } catch (e) { console.warn('Live fetch failed: Revenue TAM (USD)', e); }
     return out;
   }
 
@@ -405,7 +436,10 @@
   function DEFAULTS() { return { ...DEFAULTS_BASE, ...(LIVE.demandDefaults || {}) }; }
   function SEATS0() { return LIVE.seats0Adoption || BASE.SEATS0; }
   function AGENTS0() { return BASE.AGENTS0; }
-  function CPAAS0() { return BASE.CPAAS0; }
+  // Live-fetched from the Revenue TAM (USD) tab's GLOBAL TOTAL row, CPaaS
+  // Mkt ($M) column -- see the fetch block above. Falls back to BASE.CPAAS0
+  // only if that fetch fails or the sheet's shape changes unexpectedly.
+  function CPAAS0() { return LIVE.cpaas0 || BASE.CPAAS0; }
   function DEV0() { return BASE.DEV0; }
   function UC_SHARE0() { return LIVE.ucShare0Adoption || (LIVE.demandDefaults && LIVE.demandDefaults.ucShare0) || BASE.UC_SHARE0; }
   function CC_SHARE0() { return (LIVE.demandDefaults && LIVE.demandDefaults.ccShare0) || BASE.CC_SHARE0; }
@@ -1235,7 +1269,8 @@
     const gotSom = data.somDef && data.somDef.length === 5;
     const gotReadiness = data.readinessTiers && data.readinessTiers.length > 0;
     const gotAdoption = data.seats0Adoption && data.ucShare0Adoption;
-    liveStatus = (gotRegions || gotRooms || gotDemand || gotSom || gotReadiness || gotAdoption) ? 'live' : 'fallback';
+    const gotCpaas = data.cpaas0 && data.cpaas0 > 0;
+    liveStatus = (gotRegions || gotRooms || gotDemand || gotSom || gotReadiness || gotAdoption || gotCpaas) ? 'live' : 'fallback';
     if (gotDemand) Object.assign(state, data.demandDefaults);
     render();
   }).catch(err => { console.warn('Live model load failed entirely, using baseline:', err); liveStatus = 'fallback'; render(); });
