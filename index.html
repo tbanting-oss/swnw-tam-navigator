@@ -180,6 +180,12 @@
     { key: 'ccop', name: 'CC on-premises', held: 0.72, contest: 0.30 },
     { key: 'cpaas', name: 'CPaaS', held: 0.45, contest: 0.15 }
   ];
+  // The only 7 countries (of 224) whose CPaaS $ figure in Revenue TAM is
+  // actually driven by sourced per-country pricing (Twilio/local-carrier
+  // Auth+Voice rates) rather than the legacy flat rate. This is a
+  // DIFFERENT thing from the account-holder confidence tiers below --
+  // see the CPaaS detail tab for why the two must not be conflated.
+  const PRICING_SOURCED_7 = ['United States', 'United Kingdom', 'Germany', 'Japan', 'India', 'Indonesia', 'Nigeria'];
   const DEPLOY = {
     cloud:  { label: 'Cloud', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 0, ccop: 0, multicaas: 1 }, note: 'Cloud lines only. On-premises support revenue is out of scope.' },
     hybrid: { label: 'Hybrid', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 1, ccop: 1, multicaas: 1 }, note: 'Cloud and on-premises both in scope, including migration of your own installed base.' },
@@ -403,7 +409,7 @@
     // comment above for what that blend currently consists of).
     try {
       const rev = await fetchTab('Revenue TAM (USD)');
-      const revTable = findTable(rev, ['Country', 'CPaaS Mkt']);
+      const revTable = findTable(rev, ['Country', 'Readiness Tier', 'CPaaS Mkt']);
       if (revTable) {
         const globalRow = revTable.dataRows.find(r => r[0] && r[0].trim().toUpperCase() === 'GLOBAL TOTAL');
         if (globalRow) {
@@ -412,8 +418,45 @@
           const v = parseFloat(cleaned);
           if (!isNaN(v) && v > 0) out.cpaas0 = v / 1000; // sheet is $M, this model works in $B
         }
+        // Per-country CPaaS breakout -- added [see CPaaS detail tab]. Real
+        // country rows only (identified by a valid Readiness Tier value,
+        // e.g. "Tier 3"), excluding the GLOBAL TOTAL and region-subtotal
+        // rows, which carry no tier.
+        out.cpaasByCountry = revTable.dataRows
+          .filter(r => r[revTable.colIdx['Readiness Tier']] && /^Tier\s*\d/i.test(r[revTable.colIdx['Readiness Tier']].trim()))
+          .map(r => {
+            const raw = r[revTable.colIdx['CPaaS Mkt']];
+            const cleaned = String(raw || '').replace(/[$,\s]/g, '').replace(/M$/i, '');
+            return { name: r[0] && r[0].trim(), cpaasM: parseFloat(cleaned) };
+          })
+          .filter(r => r.name && !isNaN(r.cpaasM));
       }
     } catch (e) { console.warn('Live fetch failed: Revenue TAM (USD)', e); }
+    // Account-holder confidence tiers -- added [see CPaaS detail tab].
+    // This describes how solid the POPULATION x OWNERSHIP base is for
+    // each country, prep work for future pricing sourcing. It is NOT a
+    // confidence rating on the country's current CPaaS $ figure above --
+    // only the 7 in PRICING_SOURCED_7 have sourced pricing; the other 217
+    // are still on the legacy flat rate regardless of how solid their
+    // account-holder base now is. Kept as two separate fetches/maps on
+    // purpose so the two dimensions can never get merged into one number.
+    try {
+      const cpi = await fetchTab('CPaaS Sourced Inputs (Voice+Auth)');
+      const cpiTable = findTable(cpi, ['Country', 'Account holders', 'Confidence']);
+      if (cpiTable) {
+        const holders = {}, confidence = {};
+        cpiTable.dataRows.forEach(r => {
+          const name = r[0] && r[0].trim();
+          if (!name) return;
+          const ah = numVal(r[cpiTable.colIdx['Account holders']]);
+          const conf = r[cpiTable.colIdx['Confidence']] && r[cpiTable.colIdx['Confidence']].trim();
+          if (!isNaN(ah)) holders[name] = ah;
+          if (conf) confidence[name] = conf;
+        });
+        out.accountHolders = holders;
+        out.accountHolderConfidence = confidence;
+      }
+    } catch (e) { console.warn('Live fetch failed: CPaaS Sourced Inputs (Voice+Auth)', e); }
     return out;
   }
 
@@ -440,6 +483,12 @@
   // Mkt ($M) column -- see the fetch block above. Falls back to BASE.CPAAS0
   // only if that fetch fails or the sheet's shape changes unexpectedly.
   function CPAAS0() { return LIVE.cpaas0 || BASE.CPAAS0; }
+  // Per-country CPaaS breakout and account-holder readiness data for the
+  // CPaaS detail tab -- see the fetch block above for the important
+  // distinction between the two.
+  function CPAAS_BY_COUNTRY() { return LIVE.cpaasByCountry || []; }
+  function ACCOUNT_HOLDERS() { return LIVE.accountHolders || {}; }
+  function ACCOUNT_HOLDER_CONFIDENCE() { return LIVE.accountHolderConfidence || {}; }
   function DEV0() { return BASE.DEV0; }
   function UC_SHARE0() { return LIVE.ucShare0Adoption || (LIVE.demandDefaults && LIVE.demandDefaults.ucShare0) || BASE.UC_SHARE0; }
   function CC_SHARE0() { return (LIVE.demandDefaults && LIVE.demandDefaults.ccShare0) || BASE.CC_SHARE0; }
@@ -815,8 +864,8 @@
       </div>
     </header>
     <nav style="display:flex;gap:4px;margin:22px 0 24px;flex-wrap:wrap">
-      ${['overview','forecast','regions','rooms','compete','ai'].map(k => {
-        const labels = { overview: 'Overview', forecast: 'Forecast 2025–2030', regions: 'Regions &amp; countries', rooms: 'Meeting rooms', compete: 'Competition &amp; SOM', ai: 'AI unit economics' };
+      ${['overview','forecast','regions','cpaas','rooms','compete','ai'].map(k => {
+        const labels = { overview: 'Overview', forecast: 'Forecast 2025–2030', regions: 'Regions &amp; countries', cpaas: 'CPaaS detail', rooms: 'Meeting rooms', compete: 'Competition &amp; SOM', ai: 'AI unit economics' };
         const on = v.tab === k;
         return `<button data-tab="${k}" style="background:${on ? 'var(--c-rule)' : 'transparent'};border:1px solid ${on ? 'var(--c-trust)' : 'var(--c-border)'};color:${on ? 'var(--c-text)' : 'var(--c-muted)'};font-size:13px;font-weight:${on?600:500};padding:9px 16px;border-radius:8px;cursor:pointer">${labels[k]}</button>`;
       }).join('')}
@@ -987,6 +1036,131 @@
           <div style="height:8px;background:var(--c-bg);border-radius:3px;overflow:hidden"><div style="${bar(r.grabs / v.maxGrabs, C.teal, '8px')}"></div></div>
           <div class="tnum" style="text-align:right;font-size:12.5px">${r.grabs.toFixed(2)}M</div>
         </div>`).join('')}
+      </div>
+    </section>`;
+  }
+
+  // ============================================================
+  // CPAAS DETAIL TAB — added [this pass]
+  // ------------------------------------------------------------
+  // Two genuinely different dimensions live here, kept visually and
+  // structurally separate on purpose:
+  //   1. PRICING METHODOLOGY -- which of the 224 countries' CPaaS $
+  //      figure is driven by sourced per-country pricing (the 7 in
+  //      PRICING_SOURCED_7) vs. the legacy flat rate (everyone else).
+  //      This is what actually determines today's $ number.
+  //   2. ACCOUNT-HOLDER READINESS -- for the 217 NOT yet priced, how
+  //      solid their population x ownership base is (Sourced /
+  //      Modelled-Calibrated / Modelled-Directional), which is prep
+  //      work for future pricing sourcing, not a rating on their
+  //      current $ figure. A country can have a rock-solid
+  //      account-holder base and still be sitting on a flat-rate price
+  //      that has nothing to do with it.
+  // Conflating these two would overstate confidence in 217 countries'
+  // current numbers, so they never appear in the same card or column
+  // as if they were one thing.
+  function cpaasHTML(v) {
+    const byCountry = CPAAS_BY_COUNTRY().slice().sort((a, b) => b.cpaasM - a.cpaasM);
+    const holders = ACCOUNT_HOLDERS(), confMap = ACCOUNT_HOLDER_CONFIDENCE();
+    const haveData = byCountry.length > 0;
+    const total = byCountry.reduce((a, r) => a + r.cpaasM, 0);
+    const sourcedRows = byCountry.filter(r => PRICING_SOURCED_7.includes(r.name));
+    const legacyRows = byCountry.filter(r => !PRICING_SOURCED_7.includes(r.name));
+    const sourcedTotal = sourcedRows.reduce((a, r) => a + r.cpaasM, 0);
+    const legacyTotal = total - sourcedTotal;
+    const confCounts = { Sourced: 0, Calibrated: 0, Directional: 0 };
+    legacyRows.forEach(r => {
+      const c = confMap[r.name] || '';
+      if (c.indexOf('Sourced') === 0) confCounts.Sourced++;
+      else if (c.indexOf('Modelled-Calibrated') === 0) confCounts.Calibrated++;
+      else if (c.indexOf('Modelled-Directional') === 0) confCounts.Directional++;
+    });
+    const priorityList = legacyRows
+      .map(r => ({ name: r.name, holders: holders[r.name], conf: confMap[r.name] }))
+      .filter(r => !isNaN(r.holders))
+      .sort((a, b) => b.holders - a.holders)
+      .slice(0, 15);
+    const maxCpaas = byCountry.length ? byCountry[0].cpaasM : 1;
+    const confColor = (c) => c && c.indexOf('Sourced') === 0 ? C.teal : c && c.indexOf('Modelled-Calibrated') === 0 ? C.purple : c ? C.grey : 'var(--c-dim)';
+
+    if (!haveData) {
+      return `<section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
+        <h2 style="margin:0 0 8px;font-size:17px;font-weight:600">CPaaS detail</h2>
+        <div style="font-size:13px;color:var(--c-dim)">Couldn't load the per-country breakdown from the sheet this time -- showing the blended total only. Try reloading.</div>
+      </section>`;
+    }
+
+    return `
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
+      <h2 style="margin:0 0 4px;font-size:17px;font-weight:600">Pricing methodology</h2>
+      <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">What actually determines each country's CPaaS $ figure today.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+        <div style="border-top:2px solid ${C.teal};padding-top:12px">
+          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Sourced pricing</div>
+          <div class="tnum" style="font-size:26px;font-weight:600">${sourcedRows.length} countries</div>
+          <div style="font-size:12.5px;color:var(--c-muted)">${fb(sourcedTotal / 1000, 2)} of ${fb(total / 1000, 1)} total (${pct(sourcedTotal / total, 0)})</div>
+        </div>
+        <div style="border-top:2px solid var(--c-grey);padding-top:12px">
+          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Legacy flat-rate</div>
+          <div class="tnum" style="font-size:26px;font-weight:600">${legacyRows.length} countries</div>
+          <div style="font-size:12.5px;color:var(--c-muted)">${fb(legacyTotal / 1000, 2)} of ${fb(total / 1000, 1)} total (${pct(legacyTotal / total, 0)}) -- calibrated to Metrigy/IDC/Omdia, not this project's own research</div>
+        </div>
+      </div>
+    </section>
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
+      <h2 style="margin:0 0 4px;font-size:17px;font-weight:600">Account-holder readiness for future sourcing</h2>
+      <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">Applies only to the ${legacyRows.length} not-yet-priced countries above -- how solid their population &times; ownership base is, not how accurate their current flat-rate $ figure is. A country can score Sourced here and still be on the legacy rate.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px">
+        <div style="border-top:2px solid ${C.teal};padding-top:12px">
+          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Sourced</div>
+          <div class="tnum" style="font-size:24px;font-weight:600">${confCounts.Sourced}</div>
+          <div style="font-size:11.5px;color:var(--c-muted)">World Bank Findex direct</div>
+        </div>
+        <div style="border-top:2px solid ${C.purple};padding-top:12px">
+          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Modelled-Calibrated</div>
+          <div class="tnum" style="font-size:24px;font-weight:600">${confCounts.Calibrated}</div>
+          <div style="font-size:11.5px;color:var(--c-muted)">Regional/income peer median</div>
+        </div>
+        <div style="border-top:2px solid var(--c-grey);padding-top:12px">
+          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Modelled-Directional</div>
+          <div class="tnum" style="font-size:24px;font-weight:600">${confCounts.Directional}</div>
+          <div style="font-size:11.5px;color:var(--c-muted)">Outside World Bank reporting</div>
+        </div>
+      </div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">Sourcing priority -- largest not-yet-priced markets by account-holder count</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
+          <th style="text-align:left;padding:0 0 8px">Rank</th><th style="text-align:left;padding:0 0 8px">Country</th>
+          <th style="text-align:right;padding:0 0 8px 14px">Account holders</th><th style="text-align:left;padding:0 0 8px 14px">Base confidence</th></tr></thead>
+        <tbody>
+        ${priorityList.map((r, i) => `<tr style="border-top:1px solid var(--c-rule)">
+          <td style="padding:8px 0;color:var(--c-dim)">${i + 1}</td>
+          <td style="padding:8px 0;font-weight:500">${r.name}</td>
+          <td class="tnum" style="padding:8px 0 8px 14px;text-align:right">${r.holders.toFixed(1)}M</td>
+          <td style="padding:8px 0 8px 14px;color:${confColor(r.conf)}">${r.conf || '—'}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </section>
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
+        <h2 style="margin:0;font-size:17px;font-weight:600">All 224 countries, by CPaaS $</h2>
+        <div style="font-size:12.5px;color:var(--c-dim)">Sourced-pricing countries marked, rest on legacy flat-rate</div>
+      </div>
+      <div style="max-height:520px;overflow-y:auto;border:1px solid var(--c-rule);border-radius:8px">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;position:sticky;top:0;background:var(--c-panel)">
+            <th style="text-align:left;padding:8px 12px">Country</th><th style="text-align:right;padding:8px 12px">CPaaS $M</th>
+            <th style="text-align:left;padding:8px 12px">Pricing</th></tr></thead>
+          <tbody>
+          ${byCountry.map(r => {
+            const sourced = PRICING_SOURCED_7.includes(r.name);
+            return `<tr style="border-top:1px solid var(--c-rule)">
+              <td style="padding:7px 12px;font-weight:500">${r.name}</td>
+              <td class="tnum" style="padding:7px 12px;text-align:right">${r.cpaasM.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td style="padding:7px 12px;color:${sourced ? C.teal : 'var(--c-dim)'}">${sourced ? 'Sourced pricing' : 'Legacy flat-rate'}</td></tr>`;
+          }).join('')}
+          </tbody>
+        </table>
       </div>
     </section>`;
   }
@@ -1232,7 +1406,7 @@
 
   function render() {
     const v = build();
-    const tabHTML = { overview: overviewHTML, forecast: forecastHTML, regions: regionsHTML, rooms: roomsHTML, compete: competeHTML, ai: aiHTML }[v.tab](v);
+    const tabHTML = { overview: overviewHTML, forecast: forecastHTML, regions: regionsHTML, cpaas: cpaasHTML, rooms: roomsHTML, compete: competeHTML, ai: aiHTML }[v.tab](v);
     document.getElementById('app').innerHTML = `
       <div data-page="true" style="min-height:100vh;background:var(--c-bg);color:var(--c-text);padding:28px 32px 56px">
         ${headerHTML(v)}
