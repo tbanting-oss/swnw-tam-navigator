@@ -1148,6 +1148,21 @@
     const splitHaveData = splitRows.length > 0;
     const splitAuthTotal = splitRows.reduce((a, r) => a + r.authM, 0);
     const splitVoiceTotal = splitRows.reduce((a, r) => a + r.voiceM, 0);
+    // Full-coverage check -- only let the slider drive the Pricing
+    // methodology card's Sourced figure when every one of the 7 sourced
+    // countries has both Auth and Voice price data. Without this, the two
+    // cards could silently stop agreeing again -- same failure Tim flagged
+    // originally, just caused by missing price data instead of a stale
+    // total. legacyTotal is never touched by the slider (the 217 legacy
+    // countries have no Auth/Voice split to speak of); totalDisplay is
+    // legacyTotal + sourcedTotalDisplay by construction, so Sourced +
+    // Legacy always equals the Total shown on this tab, at every slider
+    // position -- at the cost of this tab's own Total drifting from
+    // CPAAS0()/the Overview tab's $14.1B when authShare != 50%, which is
+    // the same disclosed effect the lever's own note already describes.
+    const splitFullCoverage = splitHaveData && splitRows.length === sourcedRows.length;
+    const sourcedTotalDisplay = splitFullCoverage ? (splitAuthTotal + splitVoiceTotal) : sourcedTotal;
+    const totalDisplay = legacyTotal + sourcedTotalDisplay;
     const confCounts = { Sourced: 0, Calibrated: 0, Directional: 0 };
     legacyRows.forEach(r => {
       const c = confMap[r.name] || '';
@@ -1178,19 +1193,19 @@
         <div style="border-top:2px solid ${C.teal};padding-top:12px">
           <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Sourced pricing</div>
           <div class="tnum" style="font-size:26px;font-weight:600">${sourcedRows.length} countries</div>
-          <div style="font-size:12.5px;color:var(--c-muted)">${fb(sourcedTotal / 1000, 2)} of ${fb(total / 1000, 1)} total (${pct(sourcedTotal / total, 0)})</div>
+          <div style="font-size:12.5px;color:var(--c-muted)">${fb(sourcedTotalDisplay / 1000, 2)} of ${fb(totalDisplay / 1000, 1)} total (${pct(sourcedTotalDisplay / totalDisplay, 0)})</div>
         </div>
         <div style="border-top:2px solid var(--c-grey);padding-top:12px">
           <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Legacy flat-rate</div>
           <div class="tnum" style="font-size:26px;font-weight:600">${legacyRows.length} countries</div>
-          <div style="font-size:12.5px;color:var(--c-muted)">${fb(legacyTotal / 1000, 2)} of ${fb(total / 1000, 1)} total (${pct(legacyTotal / total, 0)}) -- calibrated to external market-research estimates, not this project's own research</div>
+          <div style="font-size:12.5px;color:var(--c-muted)">${fb(legacyTotal / 1000, 2)} of ${fb(totalDisplay / 1000, 1)} total (${pct(legacyTotal / totalDisplay, 0)}) -- calibrated to external market-research estimates, not this project's own research</div>
         </div>
       </div>
     </section>
     ${splitHaveData ? `
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
       <h2 style="margin:0 0 4px;font-size:17px;font-weight:600">Auth vs Voice split -- ${sourcedRows.length} sourced countries</h2>
-      <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">Splits the Sourced pricing total above using the Auth-share-of-volume lever (Master Levers &gt; CPaaS), currently set to ${pct(authShare, 0)}. Default 50% exactly reproduces the Sourced pricing total; away from 50%, both the split and the total move, since the total already assumed an even split.</div>
+      <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">Recomputes the Sourced pricing total above as you drag the Auth-share-of-volume lever (Master Levers &gt; CPaaS), currently ${pct(authShare, 0)} -- the two cards always agree with each other. Away from 50%, both drift from the $14.1B CPaaS figure used elsewhere in this dashboard (Overview, header). Nobody has measured the real Auth/Voice split; 50% just matches today's default blended assumption.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px">
         <div style="border-top:2px solid ${C.teal};padding-top:12px">
           <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Authentication</div>
@@ -1489,7 +1504,7 @@
       ].filter(Boolean) },
       { title: 'CPaaS', key: 'cpaas', items: [
         w.cpaas > 0 ? sliderRow('cpaasMult', 'Ceiling vs today\u2019s spend', 1.5, 3, 0.1, x => x.toFixed(1)+'×', 'How much bigger CPaaS could get if every business messaged programmatically.') : '',
-        w.cpaas > 0 ? sliderRow('authShareOfVolume', 'Auth share of message/voice volume', 0.1, 0.9, 0.01, x => (x*100).toFixed(0)+'%', 'Splits the 7 sourced countries\u2019 blended Auth+Voice figure into two tracked numbers. Today\u2019s official $ blends Auth-message price and Voice-minute price into one average, which implicitly assumes an even 50/50 split of the shared annual volume between the two -- nobody has actually measured what share of those events are messages vs. calls. Moving this slider changes both the split AND the total, since the 50/50 assumption was already baked into today\u2019s number. Default 50% exactly reproduces today\u2019s live sourced figure -- see the CPaaS detail tab for the resulting split.') : ''
+        w.cpaas > 0 ? sliderRow('authShareOfVolume', 'Auth share of message/voice volume', 0.1, 0.9, 0.01, x => (x*100).toFixed(0)+'%', 'Moves both the split and the CPaaS detail tab\u2019s totals together, so the two stay consistent as you drag -- but away from 50%, they drift from the $14.1B CPaaS figure used elsewhere (Overview, header). Default 50% matches today\u2019s blended assumption; nobody has actually measured the real Auth/Voice split.') : ''
       ].filter(Boolean) },
       { title: 'Your position', key: 'position', items: [
         sliderRow('winRate', 'Win rate', 0.02, 0.3, 0.01, x => (x*100).toFixed(0)+'%', 'The share you win of the contestable pool.')
