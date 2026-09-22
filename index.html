@@ -59,10 +59,11 @@
   // Calibrated baselines — last-known-good anchors. Live fetch overrides what it can find;
   // anything the fetch can't parse falls back to these values, so the dashboard always works.
   // CPAAS0 updated 21 Sep 2026 (was 16.15958855, the old flat-rate figure
-  // calibrated to Metrigy/IDC/Omdia): the underlying sheet moved to a
-  // bottom-up, ground-up Voice+Authentication model, sourced per country
-  // (World Bank Findex account ownership x population x Twilio/local-
-  // carrier pricing) with zero IDC/Metrigy/Omdia linkage. Only 7 of 224
+  // calibrated to external market-research estimates): the underlying
+  // sheet moved to a bottom-up, ground-up Voice+Authentication model,
+  // sourced per country (World Bank Findex account ownership x population
+  // x Twilio/local-carrier pricing) with zero external market-research
+  // linkage. Only 7 of 224
   // countries carry real per-country pricing so far (US, UK, Germany,
   // Japan, India, Indonesia, Nigeria); the rest are still on the legacy
   // flat rate pending sourcing -- see the sheet's "CPaaS Sourced Inputs
@@ -1182,7 +1183,7 @@
         <div style="border-top:2px solid var(--c-grey);padding-top:12px">
           <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Legacy flat-rate</div>
           <div class="tnum" style="font-size:26px;font-weight:600">${legacyRows.length} countries</div>
-          <div style="font-size:12.5px;color:var(--c-muted)">${fb(legacyTotal / 1000, 2)} of ${fb(total / 1000, 1)} total (${pct(legacyTotal / total, 0)}) -- calibrated to Metrigy/IDC/Omdia, not this project's own research</div>
+          <div style="font-size:12.5px;color:var(--c-muted)">${fb(legacyTotal / 1000, 2)} of ${fb(total / 1000, 1)} total (${pct(legacyTotal / total, 0)}) -- calibrated to external market-research estimates, not this project's own research</div>
         </div>
       </div>
     </section>
