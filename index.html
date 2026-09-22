@@ -188,30 +188,68 @@
   // see the CPaaS detail tab for why the two must not be conflated.
   const PRICING_SOURCED_7 = ['United States', 'United Kingdom', 'Germany', 'Japan', 'India', 'Indonesia', 'Nigeria'];
   // Use-case breakdown (Auth / Notification / Marketing / CX-Service) --
-  // added [this pass]. Recovered from a separate, independent artifact
-  // ("CPaaS Demand Model", built 20 Sep 2026) rather than researched
-  // fresh -- see the CPaaS detail tab for the full scope note. Computed
-  // at that model's own DEFAULT parameters (peakEvents 30, peakTransactions
-  // 8, msgsPerTxn 3, utilTakeRate 10%, peakMarketing 12, peakService 4,
-  // default vertical weights), reproduced exactly from its own
-  // computeForCountry() logic -- not re-derived or approximated here.
-  // Covers ONLY these 5 countries (the demand model's own scope; Germany
-  // and Japan were never modelled by it) and explicitly EXCLUDES Voice
-  // (the demand model's own stated scope boundary -- Voice, Email, and
-  // B2B-to-B2B messaging are out). US authPrice here is $0.020, now
-  // reconciled with the live sheet's own US Auth price (updated 22 Sep
-  // 2026 from $0.0083 to $0.020 -- see BASE.CPAAS0 comment for why: the
-  // raw Twilio base rate omitted real, verified AT&T/Verizon/T-Mobile/US
-  // Cellular carrier surcharges that the demand model already accounted
-  // for). This total is NOT additive to CPAAS0/the live sourced figure --
-  // different use-case scope (no Voice here; Voice+Auth only there) --
-  // shown as its own, separately-scoped number throughout.
-  const USE_CASE_5_COUNTRY = [
-    { name: 'United States', authM: 128.4, notifM: 10.3, mktgM: 64.2, cxM: 4.3 },
-    { name: 'United Kingdom', authM: 58.7, notifM: 4.7, mktgM: 31.3, cxM: 0.9 },
-    { name: 'India', authM: 38.4, notifM: 3.1, mktgM: 92.1, cxM: 2.6 },
-    { name: 'Indonesia', authM: 32.3, notifM: 2.6, mktgM: 41.3, cxM: 1.3 },
-    { name: 'Nigeria', authM: 10.2, notifM: 0.8, mktgM: 22.2, cxM: 0.6 }
+  // extended [this pass] from 5 countries to 15. Two genuinely different
+  // sourcing bases sit in one table now, carried per-row in `basis` and
+  // rendered as its own column -- never collapsed into a single footnote,
+  // same discipline as PRICING_SOURCED_7 vs. account-holder confidence
+  // above.
+  //   TIER A -- the original 5 (US, UK, India, Indonesia, Nigeria):
+  //   individually researched, reproduced exactly from the "CPaaS Demand
+  //   Model" artifact's own computeForCountry() logic (peakEvents 30,
+  //   peakTransactions 8, msgsPerTxn 3, utilTakeRate 10%, peakMarketing 12,
+  //   peakService 4, default vertical weights) -- not re-derived here.
+  //   These 5 ALSO anchor Tier B below; they are not independent of it.
+  //   TIER B -- the other 10 (China, France, Bangladesh, Brazil, Pakistan,
+  //   Iran, Russia, Mexico, Vietnam, Turkey): NOT individually researched.
+  //   Pulled from a companion workbook (tam-navigator-cpaas-rebuild.xlsx,
+  //   20 Sep 2026) that reduces the demand model to a 4-category $/company/
+  //   yr rate per Readiness Tier (Auth/Utility/Marketing/Service), then
+  //   applies each country's own Readiness Tier x Vertical Multiplier x
+  //   business count. Confidence is NOT uniform across tiers -- it is
+  //   exactly as solid as the anchor tier it borrows from:
+  //     Tier 1 rate -- Sourced (US+UK blended)              -> France
+  //     Tier 2 rate -- Directional (geometric interpolation
+  //                    between Tier 1/3; no Tier 2 country
+  //                    was independently researched)          -> China
+  //     Tier 3 rate -- Sourced (India+Indonesia blended)     -> Brazil,
+  //                    Russia, Vietnam, Turkey, Mexico
+  //     Tier 4 rate -- Sourced (Nigeria ONLY, a single-country
+  //                    anchor, not averaged)                  -> Iran,
+  //                    Bangladesh, Pakistan
+  //   China is this table's largest figure and sits on its weakest basis
+  //   (Tier 2, Directional) -- flagged in the Basis column, not buried.
+  //   Verified against the workbook's own per-country Messaging-total
+  //   column before adding (China $717M, France $49M, Bangladesh $43M,
+  //   Brazil $33M, Pakistan $28M, Iran $24M, Russia $10M, Mexico $9M,
+  //   Vietnam $8M, Turkey $6M -- category splits derived from those
+  //   totals via each row's own tier rate, checked to reproduce them).
+  // Covers ONLY these 15 countries and explicitly EXCLUDES Voice (the
+  // demand model's own stated scope boundary -- Voice, Email, and
+  // B2B-to-B2B messaging are out; the companion workbook carries the
+  // same three as explicit "Not yet built" placeholder columns for every
+  // one of the 10 Tier-B countries too, not just the original 5). US
+  // authPrice here is $0.020, reconciled with the live sheet's own US
+  // Auth price (updated 22 Sep 2026 from $0.0083 to $0.020 -- see
+  // BASE.CPAAS0 comment for why). This total is NOT additive to
+  // CPAAS0/the live sourced figure -- different use-case scope (no Voice
+  // here; Voice+Auth only there) -- shown as its own, separately-scoped
+  // number throughout.
+  const USE_CASE_COUNTRIES = [
+    { name: 'China', authM: 341.8, notifM: 27.3, mktgM: 337.2, cxM: 11.1, basis: 'Tier 2 rate — Directional (interpolated; no Tier 2 country researched)' },
+    { name: 'United States', authM: 128.4, notifM: 10.3, mktgM: 64.2, cxM: 4.3, basis: 'Individually researched anchor' },
+    { name: 'India', authM: 38.4, notifM: 3.1, mktgM: 92.1, cxM: 2.6, basis: 'Individually researched anchor' },
+    { name: 'United Kingdom', authM: 58.7, notifM: 4.7, mktgM: 31.3, cxM: 0.9, basis: 'Individually researched anchor' },
+    { name: 'Indonesia', authM: 32.3, notifM: 2.6, mktgM: 41.3, cxM: 1.3, basis: 'Individually researched anchor' },
+    { name: 'France', authM: 30.4, notifM: 2.4, mktgM: 15.9, cxM: 0.6, basis: 'Tier 1 rate — Sourced (US+UK blended anchor)' },
+    { name: 'Bangladesh', authM: 13.1, notifM: 1.0, mktgM: 28.4, cxM: 0.7, basis: 'Tier 4 rate — Sourced (Nigeria-only anchor)' },
+    { name: 'Nigeria', authM: 10.2, notifM: 0.8, mktgM: 22.2, cxM: 0.6, basis: 'Individually researched anchor' },
+    { name: 'Brazil', authM: 11.0, notifM: 0.9, mktgM: 20.3, cxM: 0.6, basis: 'Tier 3 rate — Sourced (India+Indonesia blended anchor)' },
+    { name: 'Pakistan', authM: 8.5, notifM: 0.7, mktgM: 18.4, cxM: 0.5, basis: 'Tier 4 rate — Sourced (Nigeria-only anchor)' },
+    { name: 'Iran', authM: 7.4, notifM: 0.6, mktgM: 16.0, cxM: 0.4, basis: 'Tier 4 rate — Sourced (Nigeria-only anchor)' },
+    { name: 'Russia', authM: 3.4, notifM: 0.3, mktgM: 6.3, cxM: 0.2, basis: 'Tier 3 rate — Sourced (India+Indonesia blended anchor)' },
+    { name: 'Mexico', authM: 3.0, notifM: 0.2, mktgM: 5.6, cxM: 0.2, basis: 'Tier 3 rate — Sourced (India+Indonesia blended anchor)' },
+    { name: 'Vietnam', authM: 2.8, notifM: 0.2, mktgM: 5.2, cxM: 0.2, basis: 'Tier 3 rate — Sourced (India+Indonesia blended anchor)' },
+    { name: 'Turkey', authM: 2.0, notifM: 0.2, mktgM: 3.7, cxM: 0.1, basis: 'Tier 3 rate — Sourced (India+Indonesia blended anchor)' }
   ];
   const DEPLOY = {
     cloud:  { label: 'Cloud', w: { ucaas: 1, ccaas: 1, cpaas: 1, ucop: 0, ccop: 0, multicaas: 1 }, note: 'Cloud lines only. On-premises support revenue is out of scope.' },
@@ -1194,6 +1232,14 @@
       .slice(0, 15);
     const maxCpaas = byCountry.length ? byCountry[0].cpaasM : 1;
     const confColor = (c) => c && c.indexOf('Sourced') === 0 ? C.teal : c && c.indexOf('Modelled-Calibrated') === 0 ? C.purple : c ? C.grey : 'var(--c-dim)';
+    // Use-case breakdown Basis column colour -- three distinct sourcing
+    // states, not two: an individually-researched anchor (teal, same as
+    // "Sourced" elsewhere), a tier rate borrowed from a real anchor
+    // (purple), and a tier rate with no independently-researched anchor
+    // at all (grey/dim) -- keeps China's Tier 2 Directional basis visually
+    // distinct from the Tier 1/3/4 rows that also say "Sourced" but via a
+    // borrowed rate, not their own research.
+    const useCaseBasisColor = (b) => b.indexOf('Individually researched') === 0 ? C.teal : b.indexOf('Directional') > -1 ? 'var(--c-dim)' : C.purple;
 
     if (!haveData) {
       return `<section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px">
@@ -1285,14 +1331,15 @@
     </section>
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
       <h2 style="margin:0 0 4px;font-size:17px;font-weight:600">Use-case breakdown -- Authentication / Notification / Marketing / CX-Service</h2>
-      <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">A separate, independently-built model, not the sourced-pricing figures above. Covers only these 5 countries and explicitly excludes Voice -- do not add this total to the Pricing methodology figures above; the two use different scopes and are not meant to reconcile.</div>
+      <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">A separate, independently-built model, not the sourced-pricing figures above -- do not add this total to the Pricing methodology figures above; the two use different scopes and are not meant to reconcile. Covers 15 countries: 5 individually-researched anchors (United States, United Kingdom, India, Indonesia, Nigeria), plus 10 more computed from those same anchors' tier rates via each country's own Readiness Tier -- not independently priced. Confidence varies by tier; see the Basis column. Explicitly excludes Voice, Email, and B2B-to-B2B messaging for every row.</div>
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
           <th style="text-align:left;padding:0 0 8px">Country</th><th style="text-align:right;padding:0 0 8px 14px">Auth</th>
           <th style="text-align:right;padding:0 0 8px 14px">Notification</th><th style="text-align:right;padding:0 0 8px 14px">Marketing</th>
-          <th style="text-align:right;padding:0 0 8px 14px">CX/Service</th><th style="text-align:right;padding:0 0 8px 14px;font-weight:600">Total</th></tr></thead>
+          <th style="text-align:right;padding:0 0 8px 14px">CX/Service</th><th style="text-align:right;padding:0 0 8px 14px;font-weight:600">Total</th>
+          <th style="text-align:left;padding:0 0 8px 14px">Basis</th></tr></thead>
         <tbody>
-        ${USE_CASE_5_COUNTRY.map(r => {
+        ${USE_CASE_COUNTRIES.map(r => {
           const total = r.authM + r.notifM + r.mktgM + r.cxM;
           return `<tr style="border-top:1px solid var(--c-rule)">
             <td style="padding:8px 0;font-weight:500">${r.name}</td>
@@ -1300,11 +1347,12 @@
             <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-muted)">$${r.notifM.toFixed(1)}M</td>
             <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-muted)">$${r.mktgM.toFixed(1)}M</td>
             <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-muted)">$${r.cxM.toFixed(1)}M</td>
-            <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;font-weight:600">$${total.toFixed(1)}M</td></tr>`;
+            <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;font-weight:600">$${total.toFixed(1)}M</td>
+            <td style="padding:8px 0 8px 14px;font-size:12px;color:${useCaseBasisColor(r.basis)}">${r.basis}</td></tr>`;
         }).join('')}
         </tbody>
       </table>
-      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Computed at the source model's own default parameters, not re-derived here. Germany and Japan carry sourced Voice+Auth pricing above but sit outside this model's scope, so they have no use-case split. Source: "CPaaS Demand Model" artifact, built 20 Sep 2026.</div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Germany and Japan carry sourced Voice+Auth pricing above but sit outside this model's scope entirely, so they have no use-case split. The 10 tier-derived rows are NOT independently priced: each takes its country's own Readiness Tier and Vertical Multiplier and applies that tier's $/company/yr rate for Auth/Notification/Marketing/CX-Service, a rate borrowed from one of the 5 anchor countries' blend (Tier 1 = US+UK blended; Tier 3 = India+Indonesia blended; Tier 4 = Nigeria only, a single-country anchor; Tier 2 = no anchor at all, a Directional geometric interpolation between Tier 1 and Tier 3). China, this table's largest figure, sits on that weakest Tier 2 basis. Sources: "CPaaS Demand Model" artifact (20 Sep 2026) for the 5 anchors; tam-navigator-cpaas-rebuild.xlsx for the tier-rate extension to the other 10.</div>
     </section>
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
