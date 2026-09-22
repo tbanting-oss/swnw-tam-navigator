@@ -262,7 +262,7 @@
   const DEFAULTS_BASE = { ucArpu: 198, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, aiDisplacement: 0, winRate: 0.10,
     tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
     aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
-    multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all', authShareOfVolume: 0.5,
+    multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all', authMsgsPerHolderYear: 30, voiceMinsPerHolderYear: 12,
     somHeldUcaas: 0.57, somHeldUcop: 0.80, somHeldCcaas: 0.68, somHeldCcop: 0.72, somHeldCpaas: 0.45,
     sqFtPerPerson: 154, meetingShare: 0.24, rtoIntensity: 1.0, refreshCycleYears: 6, videoEnabledRate: 0.15,
     openGroups: { unifiedcomms: true, contactcentre: true, multicaas: false, cpaas: false, position: true, competition: false, aiimpact: false, meetingrooms: false } };
@@ -541,11 +541,20 @@
   function CPAAS_BY_COUNTRY() { return LIVE.cpaasByCountry || []; }
   function ACCOUNT_HOLDERS() { return LIVE.accountHolders || {}; }
   function ACCOUNT_HOLDER_CONFIDENCE() { return LIVE.accountHolderConfidence || {}; }
-  // Per-country Auth/Voice prices and the shared annual-volume placeholder
-  // -- added [this pass] to power the Auth/Voice split lever. Fallback of
-  // 52 for the volume placeholder matches Control Panel's own default.
+  // Per-country Auth/Voice prices, powering the Auth vs Voice split on the
+  // CPaaS detail tab.
   function AUTH_PRICES() { return LIVE.authPrices || {}; }
   function VOICE_PRICES() { return LIVE.voicePrices || {}; }
+  // MESSAGES_PER_ACCOUNT_PER_YEAR -- superseded [this pass]. Previously fed
+  // a single shared "volume" pool that a 50/50-style slider split between
+  // Auth and Voice -- a weak design (Tim's own review, as the dashboard's
+  // ICP): Auth messages and Voice minutes are different units at different
+  // scales, with no reason to expect them to share one number. Replaced by
+  // two independent levers (authMsgsPerHolderYear, voiceMinsPerHolderYear
+  // in DEFAULTS_BASE) that compute Auth$ and Voice$ separately -- see the
+  // Auth vs Voice split section in cpaasHTML. Left in place (fetch and
+  // function both still run) only because nothing currently reads it; not
+  // wired to anything.
   function MESSAGES_PER_ACCOUNT_PER_YEAR() { return LIVE.messagesPerAccountPerYear || 52; }
   function DEV0() { return BASE.DEV0; }
   function UC_SHARE0() { return LIVE.ucShare0Adoption || (LIVE.demandDefaults && LIVE.demandDefaults.ucShare0) || BASE.UC_SHARE0; }
@@ -1121,45 +1130,53 @@
     const byCountry = CPAAS_BY_COUNTRY().slice().sort((a, b) => b.cpaasM - a.cpaasM);
     const holders = ACCOUNT_HOLDERS(), confMap = ACCOUNT_HOLDER_CONFIDENCE();
     const authPrices = AUTH_PRICES(), voicePrices = VOICE_PRICES();
-    const msgsPerYear = MESSAGES_PER_ACCOUNT_PER_YEAR();
-    const authShare = v.st.authShareOfVolume;
+    const authMsgsPerYear = v.st.authMsgsPerHolderYear, voiceMinsPerYear = v.st.voiceMinsPerHolderYear;
     const haveData = byCountry.length > 0;
     const total = byCountry.reduce((a, r) => a + r.cpaasM, 0);
     const sourcedRows = byCountry.filter(r => PRICING_SOURCED_7.includes(r.name));
     const legacyRows = byCountry.filter(r => !PRICING_SOURCED_7.includes(r.name));
     const sourcedTotal = sourcedRows.reduce((a, r) => a + r.cpaasM, 0);
     const legacyTotal = total - sourcedTotal;
-    // Auth/Voice split -- added [this pass]. Uses the SAME account-holder
-    // counts, Auth/Voice prices and annual-volume placeholder the live
-    // sheet's own sourced formula uses, so at authShare=0.5 this exactly
-    // reproduces the Pricing methodology total above. Moving the slider
-    // reallocates volume between Auth messages and Voice minutes -- see
-    // the lever's own note for why the total moves too, not just the
-    // split. Formula (in $M, D already in millions so no further scaling
-    // needed): authM = D x msgsPerYear x authShare x AuthPrice; voiceM =
-    // D x msgsPerYear x (1-authShare) x VoicePrice.
+    // Auth/Voice split -- redesigned [this pass]. Previously a single
+    // shared "volume" pool split by percentage between Auth and Voice --
+    // Tim's own review, playing the dashboard's ICP, flagged this as a
+    // weak model: Auth messages (OTP codes) and Voice minutes are
+    // different units at different scales, with no reason to expect they
+    // share one number a person can meaningfully split with one dial.
+    // Replaced with two independent per-account-holder assumptions
+    // (Master Levers > CPaaS: authMsgsPerHolderYear, voiceMinsPerHolderYear)
+    // that compute Auth$ and Voice$ separately -- no shared pool, no
+    // artificial total-preserving constraint. This breaks the old "default
+    // exactly reproduces today's official figure" property on purpose: see
+    // the section's own description for why that trade was made
+    // deliberately rather than calibrated around. Formula (in $M, D
+    // already in millions so no further scaling needed): authM = D x
+    // authMsgsPerYear x AuthPrice; voiceM = D x voiceMinsPerYear x
+    // VoicePrice.
     const splitRows = PRICING_SOURCED_7.map(name => {
       const D = holders[name], E = authPrices[name], F = voicePrices[name];
       if (D === undefined || E === undefined || F === undefined) return null;
-      const authM = D * msgsPerYear * authShare * E;
-      const voiceM = D * msgsPerYear * (1 - authShare) * F;
+      const authM = D * authMsgsPerYear * E;
+      const voiceM = D * voiceMinsPerYear * F;
       return { name, authM, voiceM, totalM: authM + voiceM };
     }).filter(Boolean);
     const splitHaveData = splitRows.length > 0;
     const splitAuthTotal = splitRows.reduce((a, r) => a + r.authM, 0);
     const splitVoiceTotal = splitRows.reduce((a, r) => a + r.voiceM, 0);
-    // Full-coverage check -- only let the slider drive the Pricing
-    // methodology card's Sourced figure when every one of the 7 sourced
-    // countries has both Auth and Voice price data. Without this, the two
-    // cards could silently stop agreeing again -- same failure Tim flagged
-    // originally, just caused by missing price data instead of a stale
-    // total. legacyTotal is never touched by the slider (the 217 legacy
-    // countries have no Auth/Voice split to speak of); totalDisplay is
-    // legacyTotal + sourcedTotalDisplay by construction, so Sourced +
-    // Legacy always equals the Total shown on this tab, at every slider
-    // position -- at the cost of this tab's own Total drifting from
-    // CPAAS0()/the Overview tab's $14.1B when authShare != 50%, which is
-    // the same disclosed effect the lever's own note already describes.
+    // Full-coverage check -- only let the two volume levers drive the
+    // Pricing methodology card's Sourced figure when every one of the 7
+    // sourced countries has both Auth and Voice price data. Without this,
+    // the two cards could silently stop agreeing again -- same failure Tim
+    // flagged originally, just caused by missing price data instead of a
+    // stale total. legacyTotal is never touched by these levers (the 217
+    // legacy countries have no Auth/Voice split to speak of); totalDisplay
+    // is legacyTotal + sourcedTotalDisplay by construction, so Sourced +
+    // Legacy always equals the Total shown on this tab, at every lever
+    // setting -- at the cost of this tab's own Total drifting from
+    // CPAAS0()/the Overview tab's $14.1B whenever the levers move off
+    // whatever combination happens to reproduce the sheet's blended
+    // figure, which is the same disclosed effect the levers' own notes
+    // already describe.
     const splitFullCoverage = splitHaveData && splitRows.length === sourcedRows.length;
     const sourcedTotalDisplay = splitFullCoverage ? (splitAuthTotal + splitVoiceTotal) : sourcedTotal;
     const totalDisplay = legacyTotal + sourcedTotalDisplay;
@@ -1205,7 +1222,7 @@
     ${splitHaveData ? `
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
       <h2 style="margin:0 0 4px;font-size:17px;font-weight:600">Auth vs Voice split -- ${sourcedRows.length} sourced countries</h2>
-      <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">Recomputes the Sourced pricing total above as you drag the Auth-share-of-volume lever (Master Levers &gt; CPaaS), currently ${pct(authShare, 0)} -- the two cards always agree with each other. Away from 50%, both drift from the $14.1B CPaaS figure used elsewhere in this dashboard (Overview, header). Nobody has measured the real Auth/Voice split; 50% just matches today's default blended assumption.</div>
+      <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">Recomputes the Sourced pricing total above from two independent volume assumptions (Master Levers &gt; CPaaS): ${authMsgsPerYear} Auth messages and ${voiceMinsPerYear} Voice minutes per account holder per year, each priced separately -- not a shared pool split by percentage. The two cards on this tab always agree with each other, but neither matches the $14.1B CPaaS figure used elsewhere in this dashboard (Overview, header) -- that figure is still the sheet's own blended average; this section replaces its hidden 50/50 assumption with two real, independently-adjustable ones.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px">
         <div style="border-top:2px solid ${C.teal};padding-top:12px">
           <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Authentication</div>
@@ -1230,7 +1247,7 @@
           <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;font-weight:600">$${r.totalM.toFixed(1)}M</td></tr>`).join('')}
         </tbody>
       </table>
-      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Uses ${msgsPerYear} messages-or-minutes/account/year (Control Panel's own placeholder) and each country's sourced Auth $/message and Voice $/minute. This is not a measured message-vs-minute ratio -- nobody has sourced one -- it is the same 50/50 assumption the live formula already makes, now made adjustable and visible rather than hidden inside an average.</div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Auth volume (${authMsgsPerYear}/holder/yr) borrows the Use-case breakdown section's own peak-Auth-events assumption below as a starting anchor -- a peak figure, not a measured average, so treat it as directional. Voice volume (${voiceMinsPerYear}/holder/yr) has no sourced anchor anywhere in this build; the default is a plain placeholder, not researched -- adjust it to match your own account base. Both apply uniformly across all 7 sourced countries; neither varies by country yet.</div>
     </section>` : ''}
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
       <h2 style="margin:0 0 4px;font-size:17px;font-weight:600">Account-holder readiness for future sourcing</h2>
@@ -1287,7 +1304,7 @@
         }).join('')}
         </tbody>
       </table>
-      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Computed at the source model's own default parameters (30 peak Auth events/holder/yr, 8 transactions x 3 messages x 10% utility take rate, 12 marketing messages/holder/yr, 4 service messages/holder/yr, default vertical-mix weights) -- not re-derived here. US Auth price ($0.020) is now reconciled with the live sourced-pricing figure above (updated 22 Sep 2026); the other 4 countries' Auth prices already matched or were within 12.5% and were left as-is. Germany and Japan carry sourced Voice+Auth pricing above but were never in this demand model's scope, so they have no use-case split. Source: "CPaaS Demand Model" artifact, built 20 Sep 2026.</div>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Computed at the source model's own default parameters, not re-derived here. Germany and Japan carry sourced Voice+Auth pricing above but sit outside this model's scope, so they have no use-case split. Source: "CPaaS Demand Model" artifact, built 20 Sep 2026.</div>
     </section>
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
@@ -1504,7 +1521,8 @@
       ].filter(Boolean) },
       { title: 'CPaaS', key: 'cpaas', items: [
         w.cpaas > 0 ? sliderRow('cpaasMult', 'Ceiling vs today\u2019s spend', 1.5, 3, 0.1, x => x.toFixed(1)+'×', 'How much bigger CPaaS could get if every business messaged programmatically.') : '',
-        w.cpaas > 0 ? sliderRow('authShareOfVolume', 'Auth share of message/voice volume', 0.1, 0.9, 0.01, x => (x*100).toFixed(0)+'%', 'Moves both the split and the CPaaS detail tab\u2019s totals together, so the two stay consistent as you drag -- but away from 50%, they drift from the $14.1B CPaaS figure used elsewhere (Overview, header). Default 50% matches today\u2019s blended assumption; nobody has actually measured the real Auth/Voice split.') : ''
+        w.cpaas > 0 ? sliderRow('authMsgsPerHolderYear', 'Auth messages / holder / yr', 5, 60, 1, x => x.toFixed(0), 'How many Auth (OTP/verification) messages the average account holder gets a year. Default 30 borrows the Use-case breakdown section\u2019s own peak-Auth-events assumption (CPaaS detail tab) as a starting anchor -- a peak figure, not a measured average, so treat this as directional. Drives the Auth $ figure in the Auth vs Voice split, independent of the Voice lever below.') : '',
+        w.cpaas > 0 ? sliderRow('voiceMinsPerHolderYear', 'Voice minutes / holder / yr', 1, 60, 1, x => x.toFixed(0), 'How many Voice minutes the average account holder generates a year. No sourced anchor was found for this anywhere in this build -- the default is a plain placeholder, not a researched figure. Adjust it to match your own account base or market knowledge. Drives the Voice $ figure in the Auth vs Voice split, independent of the Auth lever above.') : ''
       ].filter(Boolean) },
       { title: 'Your position', key: 'position', items: [
         sliderRow('winRate', 'Win rate', 0.02, 0.3, 0.01, x => (x*100).toFixed(0)+'%', 'The share you win of the contestable pool.')
