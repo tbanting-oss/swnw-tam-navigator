@@ -1201,6 +1201,40 @@
     const splitHaveData = splitRows.length > 0;
     const splitAuthTotal = splitRows.reduce((a, r) => a + r.authM, 0);
     const splitVoiceTotal = splitRows.reduce((a, r) => a + r.voiceM, 0);
+    // Triangulation status -- added [this pass, third cut], per-country.
+    // Checked all 6 named vendors from the original sourcing list (Sinch,
+    // Plivo, Telnyx, Vonage, Infobip, Bandwidth) for public per-country
+    // rate cards. Result: Plivo is the ONLY one that publishes real,
+    // first-party, static per-country pricing -- Sinch and Infobip gate
+    // pricing behind JS calculators (not crawlable), Telnyx's
+    // country-suffixed URLs all canonicalise to the same generic US-only
+    // page (confirmed by direct fetch, not just a search-snippet
+    // artifact), Vonage's real Pricing API needs an account key/secret,
+    // and Bandwidth is explicitly sales-gated. So "triangulated" here
+    // means single-vendor-checked against Plivo specifically, not
+    // multi-source -- labelled as such throughout, never just "Sourced"
+    // or "Two-Source", to avoid implying a confidence tier this doesn't
+    // meet. Pulled Plivo's own rate card directly for 7 of the 10 and
+    // checked each against the Twilio figure already in the row:
+    //   China -- Plivo list $0.1082 initially looked like a 3x mismatch;
+    //     resolved once Plivo's own "effective rate at typical volume"
+    //     (~$0.0334) turned out to match Twilio almost exactly -- a
+    //     list-vs-negotiated-price artifact, not a real disagreement.
+    //   Russia, Mexico -- Twilio sits inside Plivo's own carrier-level
+    //     range for that country.
+    //   France, Turkey -- close agreement, single digits % apart.
+    //   Bangladesh -- Plivo's effective rate (~$0.2653) matches Twilio's
+    //     $0.2653 almost exactly.
+    //   Pakistan -- Plivo's effective rate (~$0.2937) sits ~11% below
+    //     Twilio's $0.3310, ordinary cross-vendor variance.
+    // Brazil, Iran, and Vietnam are NOT checked against Plivo -- a
+    // secondhand blog (sent.dm) cited Plivo figures for all three, but
+    // that same blog's cited Plivo figure for Pakistan ($0.0800) was off
+    // by more than 3x against Plivo's own real page (~$0.29 effective),
+    // so its citations aren't trusted here even where no first-party
+    // Plivo page was found. These three stay single-source (Twilio only)
+    // until checked directly.
+    const TRIANGULATED_VS_PLIVO = ['China', 'Russia', 'Mexico', 'France', 'Turkey', 'Bangladesh', 'Pakistan'];
     // Preview rows -- redesigned [this pass, second cut]. First version
     // multiplied these prices by the SAME 30-Auth/12-Voice-per-holder
     // lever used for the 7 sourced countries -- and it broke exactly the
@@ -1226,7 +1260,12 @@
     // real-looking dollar figure.
     const previewRows = Object.keys(authPrices)
       .filter(name => !PRICING_SOURCED_7.includes(name) && voicePrices[name] !== undefined && holders[name] !== undefined)
-      .map(name => ({ name, authPrice: authPrices[name], voicePrice: voicePrices[name], holdersM: holders[name] }))
+      .map(name => ({
+        name, authPrice: authPrices[name], voicePrice: voicePrices[name], holdersM: holders[name],
+        basis: TRIANGULATED_VS_PLIVO.includes(name)
+          ? 'Single-vendor triangulated (Plivo) -- Plivo\u2019s own rate card checked directly; close agreement'
+          : 'Single-source (Twilio only) -- not yet checked against Plivo'
+      }))
       .sort((a, b) => b.holdersM - a.holdersM);
     const havePreview = previewRows.length > 0;
     // Full-coverage check -- only let the two volume levers drive the
@@ -1325,20 +1364,22 @@
       ${havePreview ? `
       <div style="border-top:1px solid var(--c-rule);margin-top:20px;padding-top:18px">
         <h3 style="margin:0 0 4px;font-size:14.5px;font-weight:600;color:${C.purple}">Priced preview -- ${previewRows.length} more countries, not yet live</h3>
-        <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:14px">Have Auth+Voice pricing in the sheet but are NOT in ${sourcedRows.length}-country cohort above and do NOT drive today's $14.1B CPaaS figure -- their Revenue TAM row is still on the legacy flat rate regardless of this pricing. Same distinction as Account-holder readiness below: priced here \u2260 promoted to the live formula. Shows RATES only, not a projected $ total -- see why below the table.</div>
+        <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:14px">Have Auth+Voice pricing in the sheet but are NOT in ${sourcedRows.length}-country cohort above and do NOT drive today's $14.1B CPaaS figure -- their Revenue TAM row is still on the legacy flat rate regardless of this pricing. Same distinction as Account-holder readiness below: priced here \u2260 promoted to the live formula. Shows RATES only, not a projected $ total -- see why below the table. Basis column shows which rows have been checked against a second vendor and which haven't.</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
             <th style="text-align:left;padding:0 0 8px">Country</th><th style="text-align:right;padding:0 0 8px 14px">Auth $/msg</th>
-            <th style="text-align:right;padding:0 0 8px 14px">Voice $/min</th><th style="text-align:right;padding:0 0 8px 14px">Account holders</th></tr></thead>
+            <th style="text-align:right;padding:0 0 8px 14px">Voice $/min</th><th style="text-align:right;padding:0 0 8px 14px">Account holders</th>
+            <th style="text-align:left;padding:0 0 8px 14px">Basis</th></tr></thead>
           <tbody>
           ${previewRows.map(r => `<tr style="border-top:1px solid var(--c-rule)">
             <td style="padding:8px 0;font-weight:500">${r.name}</td>
             <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-muted)">$${r.authPrice.toFixed(4)}</td>
             <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-muted)">$${r.voicePrice.toFixed(4)}</td>
-            <td class="tnum" style="padding:8px 0 8px 14px;text-align:right">${r.holdersM.toFixed(1)}M</td></tr>`).join('')}
+            <td class="tnum" style="padding:8px 0 8px 14px;text-align:right">${r.holdersM.toFixed(1)}M</td>
+            <td style="padding:8px 0 8px 14px;font-size:12px;color:${TRIANGULATED_VS_PLIVO.includes(r.name) ? C.teal : 'var(--c-dim)'}">${r.basis}</td></tr>`).join('')}
           </tbody>
         </table>
-        <div style="font-size:12px;color:var(--c-dim);margin-top:14px">No $ total is shown here on purpose. An earlier version of this table multiplied these rates by the same 30-Auth/12-Voice-per-holder lever used for the 7 sourced countries above -- and produced a $6.1B figure for China alone, bigger than that entire 7-country sourced total ($1.59B) and close to the whole 217-country legacy-flat-rate total ($11.97B). Not a bug: that lever's default was implicitly shaped by the 7's combined ~1.9B account-holder base, and China alone holds 1.26B -- nearly as many as all 7 combined -- so the same flat per-holder rate blew past everything else on this tab. The rates below are real and checkable; the volume needed to turn them into a $ figure isn't, for these 10, and reusing the 7-country lever would launder an implausible number through a real-looking one. Pricing confidence: Modelled-Calibrated -- single-source (Twilio's own public rate card), the same tier the US rate sat at before its carrier-surcharge correction (see BASE.CPAAS0 comment). Russia and Pakistan are flagged highest-risk for the same kind of base-rate undercount that fix addressed -- Twilio-published base rates are known to omit local carrier pass-through surcharges in both markets. None of these prices are triangulated against a second source (Sinch, Plivo, Telnyx, Vonage, Infobip, Bandwidth) yet -- that check, a country-scaled volume assumption, and the Russia/Pakistan surcharge review are the open items before any of these move into the sourced cohort above.</div>
+        <div style="font-size:12px;color:var(--c-dim);margin-top:14px">No $ total is shown here on purpose. An earlier version of this table multiplied these rates by the same 30-Auth/12-Voice-per-holder lever used for the 7 sourced countries above -- and produced a $6.1B figure for China alone, bigger than that entire 7-country sourced total ($1.59B) and close to the whole 217-country legacy-flat-rate total ($11.97B). Not a bug: that lever's default was implicitly shaped by the 7's combined ~1.9B account-holder base, and China alone holds 1.26B -- nearly as many as all 7 combined -- so the same flat per-holder rate blew past everything else on this tab. The rates below are real and checkable; the volume needed to turn them into a $ figure isn't, for these 10, and reusing the 7-country lever would launder an implausible number through a real-looking one.<br><br>On sourcing: these prices are Modelled-Calibrated -- Twilio's own public rate card, the same tier the US rate sat at before its carrier-surcharge correction (see BASE.CPAAS0 comment). Checked all 6 named public CPaaS vendors (Sinch, Plivo, Telnyx, Vonage, Infobip, Bandwidth) for a real second source: Plivo is the only one that publishes an actual first-party per-country rate card -- the rest gate pricing behind JS calculators, account-authenticated APIs, sales contact, or (Telnyx) a URL that doesn't actually change the content. So "triangulated" below means single-vendor-checked against Plivo specifically, not multi-source confirmation -- 7 of the 10 (China, Russia, Mexico, France, Turkey, Bangladesh, Pakistan) have been checked this way and agree closely with Twilio once list-vs-effective pricing is accounted for; Brazil, Iran, and Vietnam remain single-source, not yet checked against Plivo directly. Russia and Pakistan are additionally flagged highest-risk for carrier-surcharge undercount, the same issue the US rate needed correcting for -- Twilio-published base rates are known to omit local carrier pass-through surcharges in both markets. A country-scaled volume assumption and the Russia/Pakistan surcharge review remain open items before any of these move into the sourced cohort above.</div>
       </div>` : ''}
     </section>` : ''}
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
