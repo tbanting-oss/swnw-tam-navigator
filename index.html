@@ -261,7 +261,7 @@
   const DEFAULTS_BASE = { ucArpu: 198, opArpu: 40, ccArpu: 1300, ccOpArpu: 250, cpaasMult: 2.0, agentScale: 1.0, aiDisplacement: 0, winRate: 0.10,
     tokRes: 12000, pricePerRes: 0.50, declRate: 0.45, intensity: 0.35, voiceShare: 0.45, aht: 6, contacts: 4800,
     aiMode: 'resolution', deploy: 'hybrid', aiCapacity: 100000, aiAgentPrice: 1200,
-    multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all',
+    multiCaaSArpuRatio: 0.40, multiCaaSPace: 1.0, sizeSegment: 'all', authShareOfVolume: 0.5,
     somHeldUcaas: 0.57, somHeldUcop: 0.80, somHeldCcaas: 0.68, somHeldCcop: 0.72, somHeldCpaas: 0.45,
     sqFtPerPerson: 154, meetingShare: 0.24, rtoIntensity: 1.0, refreshCycleYears: 6, videoEnabledRate: 0.15,
     openGroups: { unifiedcomms: true, contactcentre: true, multicaas: false, cpaas: false, position: true, competition: false, aiimpact: false, meetingrooms: false } };
@@ -468,21 +468,46 @@
     // purpose so the two dimensions can never get merged into one number.
     try {
       const cpi = await fetchTab('CPaaS Sourced Inputs (Voice+Auth)');
-      const cpiTable = findTable(cpi, ['Country', 'Account holders', 'Confidence']);
+      const cpiTable = findTable(cpi, ['Country', 'Account holders', 'Auth price', 'Voice price', 'Confidence']);
       if (cpiTable) {
-        const holders = {}, confidence = {};
+        const holders = {}, confidence = {}, authPrices = {}, voicePrices = {};
         cpiTable.dataRows.forEach(r => {
           const name = r[0] && r[0].trim();
           if (!name) return;
           const ah = numVal(r[cpiTable.colIdx['Account holders']]);
+          const ap = numVal(r[cpiTable.colIdx['Auth price']]);
+          const vp = numVal(r[cpiTable.colIdx['Voice price']]);
           const conf = r[cpiTable.colIdx['Confidence']] && r[cpiTable.colIdx['Confidence']].trim();
           if (!isNaN(ah)) holders[name] = ah;
+          if (!isNaN(ap)) authPrices[name] = ap;
+          if (!isNaN(vp)) voicePrices[name] = vp;
           if (conf) confidence[name] = conf;
         });
         out.accountHolders = holders;
         out.accountHolderConfidence = confidence;
+        out.authPrices = authPrices;
+        out.voicePrices = voicePrices;
       }
     } catch (e) { console.warn('Live fetch failed: CPaaS Sourced Inputs (Voice+Auth)', e); }
+    // Messages/mins per account per year -- the Control Panel placeholder
+    // (row 28) that drives the sourced Auth+Voice formula. Added [this
+    // pass] so the Auth/Voice split lever below can use the SAME volume
+    // assumption the live sheet's own formula uses, rather than a second,
+    // independent guess. Falls back to 52 (the sheet's own default) if
+    // this fetch fails, matching Control Panel's own fallback.
+    try {
+      const cp = await fetchTab('Control Panel');
+      const flat = cp.map(r => r.map(c => c.trim()));
+      for (const r of flat) {
+        if (r[0] && r[0].toLowerCase().includes('messages/mins per account per year')) {
+          for (let j = 1; j < r.length; j++) {
+            const v = numVal(r[j]);
+            if (!isNaN(v) && v > 0) { out.messagesPerAccountPerYear = v; break; }
+          }
+          break;
+        }
+      }
+    } catch (e) { console.warn('Live fetch failed: Control Panel (messages/mins per account)', e); }
     return out;
   }
 
@@ -515,6 +540,12 @@
   function CPAAS_BY_COUNTRY() { return LIVE.cpaasByCountry || []; }
   function ACCOUNT_HOLDERS() { return LIVE.accountHolders || {}; }
   function ACCOUNT_HOLDER_CONFIDENCE() { return LIVE.accountHolderConfidence || {}; }
+  // Per-country Auth/Voice prices and the shared annual-volume placeholder
+  // -- added [this pass] to power the Auth/Voice split lever. Fallback of
+  // 52 for the volume placeholder matches Control Panel's own default.
+  function AUTH_PRICES() { return LIVE.authPrices || {}; }
+  function VOICE_PRICES() { return LIVE.voicePrices || {}; }
+  function MESSAGES_PER_ACCOUNT_PER_YEAR() { return LIVE.messagesPerAccountPerYear || 52; }
   function DEV0() { return BASE.DEV0; }
   function UC_SHARE0() { return LIVE.ucShare0Adoption || (LIVE.demandDefaults && LIVE.demandDefaults.ucShare0) || BASE.UC_SHARE0; }
   function CC_SHARE0() { return (LIVE.demandDefaults && LIVE.demandDefaults.ccShare0) || BASE.CC_SHARE0; }
@@ -1088,12 +1119,34 @@
   function cpaasHTML(v) {
     const byCountry = CPAAS_BY_COUNTRY().slice().sort((a, b) => b.cpaasM - a.cpaasM);
     const holders = ACCOUNT_HOLDERS(), confMap = ACCOUNT_HOLDER_CONFIDENCE();
+    const authPrices = AUTH_PRICES(), voicePrices = VOICE_PRICES();
+    const msgsPerYear = MESSAGES_PER_ACCOUNT_PER_YEAR();
+    const authShare = v.st.authShareOfVolume;
     const haveData = byCountry.length > 0;
     const total = byCountry.reduce((a, r) => a + r.cpaasM, 0);
     const sourcedRows = byCountry.filter(r => PRICING_SOURCED_7.includes(r.name));
     const legacyRows = byCountry.filter(r => !PRICING_SOURCED_7.includes(r.name));
     const sourcedTotal = sourcedRows.reduce((a, r) => a + r.cpaasM, 0);
     const legacyTotal = total - sourcedTotal;
+    // Auth/Voice split -- added [this pass]. Uses the SAME account-holder
+    // counts, Auth/Voice prices and annual-volume placeholder the live
+    // sheet's own sourced formula uses, so at authShare=0.5 this exactly
+    // reproduces the Pricing methodology total above. Moving the slider
+    // reallocates volume between Auth messages and Voice minutes -- see
+    // the lever's own note for why the total moves too, not just the
+    // split. Formula (in $M, D already in millions so no further scaling
+    // needed): authM = D x msgsPerYear x authShare x AuthPrice; voiceM =
+    // D x msgsPerYear x (1-authShare) x VoicePrice.
+    const splitRows = PRICING_SOURCED_7.map(name => {
+      const D = holders[name], E = authPrices[name], F = voicePrices[name];
+      if (D === undefined || E === undefined || F === undefined) return null;
+      const authM = D * msgsPerYear * authShare * E;
+      const voiceM = D * msgsPerYear * (1 - authShare) * F;
+      return { name, authM, voiceM, totalM: authM + voiceM };
+    }).filter(Boolean);
+    const splitHaveData = splitRows.length > 0;
+    const splitAuthTotal = splitRows.reduce((a, r) => a + r.authM, 0);
+    const splitVoiceTotal = splitRows.reduce((a, r) => a + r.voiceM, 0);
     const confCounts = { Sourced: 0, Calibrated: 0, Directional: 0 };
     legacyRows.forEach(r => {
       const c = confMap[r.name] || '';
@@ -1133,6 +1186,36 @@
         </div>
       </div>
     </section>
+    ${splitHaveData ? `
+    <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
+      <h2 style="margin:0 0 4px;font-size:17px;font-weight:600">Auth vs Voice split -- ${sourcedRows.length} sourced countries</h2>
+      <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">Splits the Sourced pricing total above using the Auth-share-of-volume lever (Master Levers &gt; CPaaS), currently set to ${pct(authShare, 0)}. Default 50% exactly reproduces the Sourced pricing total; away from 50%, both the split and the total move, since the total already assumed an even split.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px">
+        <div style="border-top:2px solid ${C.teal};padding-top:12px">
+          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Authentication</div>
+          <div class="tnum" style="font-size:24px;font-weight:600">${fb(splitAuthTotal / 1000, 2)}</div>
+          <div style="font-size:11.5px;color:var(--c-muted)">${pct(splitAuthTotal / (splitAuthTotal + splitVoiceTotal), 0)} of sourced total</div>
+        </div>
+        <div style="border-top:2px solid ${C.purple};padding-top:12px">
+          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--c-dim)">Voice</div>
+          <div class="tnum" style="font-size:24px;font-weight:600">${fb(splitVoiceTotal / 1000, 2)}</div>
+          <div style="font-size:11.5px;color:var(--c-muted)">${pct(splitVoiceTotal / (splitAuthTotal + splitVoiceTotal), 0)} of sourced total</div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="color:var(--c-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">
+          <th style="text-align:left;padding:0 0 8px">Country</th><th style="text-align:right;padding:0 0 8px 14px">Auth $M</th>
+          <th style="text-align:right;padding:0 0 8px 14px">Voice $M</th><th style="text-align:right;padding:0 0 8px 14px;font-weight:600">Total $M</th></tr></thead>
+        <tbody>
+        ${splitRows.map(r => `<tr style="border-top:1px solid var(--c-rule)">
+          <td style="padding:8px 0;font-weight:500">${r.name}</td>
+          <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-muted)">$${r.authM.toFixed(1)}M</td>
+          <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;color:var(--c-muted)">$${r.voiceM.toFixed(1)}M</td>
+          <td class="tnum" style="padding:8px 0 8px 14px;text-align:right;font-weight:600">$${r.totalM.toFixed(1)}M</td></tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="font-size:12px;color:var(--c-dim);margin-top:14px">Uses ${msgsPerYear} messages-or-minutes/account/year (Control Panel's own placeholder) and each country's sourced Auth $/message and Voice $/minute. This is not a measured message-vs-minute ratio -- nobody has sourced one -- it is the same 50/50 assumption the live formula already makes, now made adjustable and visible rather than hidden inside an average.</div>
+    </section>` : ''}
     <section style="background:var(--c-panel);border:1px solid var(--c-border);border-radius:12px;padding:22px 24px;margin-top:22px">
       <h2 style="margin:0 0 4px;font-size:17px;font-weight:600">Account-holder readiness for future sourcing</h2>
       <div style="font-size:12.5px;color:var(--c-muted);margin-bottom:16px">Applies only to the ${legacyRows.length} not-yet-priced countries above -- how solid their population &times; ownership base is, not how accurate their current flat-rate $ figure is. A country can score Sourced here and still be on the legacy rate.</div>
@@ -1404,7 +1487,8 @@
         w.ccaas > 0 ? sliderRow('multiCaaSPace', 'Convergence speed', 0, 2, 0.05, x => x.toFixed(2)+'\u00d7', 'How fast contact-centre buyers move onto bundled Multi-CaaS platforms instead of standalone CCaaS, against the calibrated seat-band forecast (0-50 / 50-300 / 300+ seats, weighted by each band\u2019s share of CCaaS revenue). 1.0\u00d7 is the base case reaching ~37.5% of cloud CC revenue by 2030. 0\u00d7 freezes convergence at today\u2019s level; 2\u00d7 roughly doubles the pace toward each band\u2019s endpoint.') : ''
       ].filter(Boolean) },
       { title: 'CPaaS', key: 'cpaas', items: [
-        w.cpaas > 0 ? sliderRow('cpaasMult', 'Ceiling vs today\u2019s spend', 1.5, 3, 0.1, x => x.toFixed(1)+'×', 'How much bigger CPaaS could get if every business messaged programmatically.') : ''
+        w.cpaas > 0 ? sliderRow('cpaasMult', 'Ceiling vs today\u2019s spend', 1.5, 3, 0.1, x => x.toFixed(1)+'×', 'How much bigger CPaaS could get if every business messaged programmatically.') : '',
+        w.cpaas > 0 ? sliderRow('authShareOfVolume', 'Auth share of message/voice volume', 0.1, 0.9, 0.01, x => (x*100).toFixed(0)+'%', 'Splits the 7 sourced countries\u2019 blended Auth+Voice figure into two tracked numbers. Today\u2019s official $ blends Auth-message price and Voice-minute price into one average, which implicitly assumes an even 50/50 split of the shared annual volume between the two -- nobody has actually measured what share of those events are messages vs. calls. Moving this slider changes both the split AND the total, since the 50/50 assumption was already baked into today\u2019s number. Default 50% exactly reproduces today\u2019s live sourced figure -- see the CPaaS detail tab for the resulting split.') : ''
       ].filter(Boolean) },
       { title: 'Your position', key: 'position', items: [
         sliderRow('winRate', 'Win rate', 0.02, 0.3, 0.01, x => (x*100).toFixed(0)+'%', 'The share you win of the contestable pool.')
