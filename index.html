@@ -947,7 +947,7 @@
       const on = v.scen === key, dark = key === 'Bull';
       return `<button data-scen="${key}" style="background:${on ? SCEN[key].color : 'transparent'};border:none;color:${on ? (dark ? 'var(--c-ink-fixed)' : '#fff') : 'var(--c-muted)'};font-size:11.5px;font-weight:600;letter-spacing:.06em;padding:8px 14px;border-radius:6px;cursor:pointer">${key}</button>`;
     };
-    const liveDot = liveStatus === 'live' ? `<span style="color:var(--c-edge)">● Live sheet data</span>` :
+    const liveDot = liveStatus === 'live' ? `<span style="color:var(--c-edge)">● Archive: data as of 13 Oct 2026, no longer maintained</span>` :
       liveStatus === 'loading' ? `<span style="color:var(--c-dim)">○ Loading live data…</span>` :
       `<span style="color:var(--c-dim)" title="Couldn't reach or parse the sheet — showing last calibrated baseline">○ Baseline (fallback)</span>`;
     return `
